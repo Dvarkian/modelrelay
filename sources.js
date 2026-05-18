@@ -175,6 +175,7 @@ export const sources = {
   "nvidia": {
     "name": "NIM",
     "url": "https://integrate.api.nvidia.com/v1/chat/completions",
+    "discoverable": true,
     "models": [
       ["deepseek-ai/deepseek-v3.2", "DeepSeek V3.2", "128k"],
       ["moonshotai/kimi-k2.5", "Kimi K2.5", "128k"],
@@ -225,6 +226,7 @@ export const sources = {
   "groq": {
     "name": "Groq",
     "url": "https://api.groq.com/openai/v1/chat/completions",
+    "discoverable": true,
     "models": [
       ["llama-3.3-70b-versatile", "Llama 3.3 70B", "128k"],
       ["meta-llama/llama-4-scout-17b-16e-preview", "Llama 4 Scout", "10M"],
@@ -241,6 +243,7 @@ export const sources = {
    "cerebras": {
      "name": "Cerebras",
      "url": "https://api.cerebras.ai/v1/chat/completions",
+     "discoverable": true,
      "models": [
        ["zai-glm-4.7", "GLM 4.7", "128k"],
        ["llama3.1-8b", "Llama 3.1 8B", "128k"],
@@ -285,6 +288,7 @@ export const sources = {
   "codestral": {
     "name": "Codestral",
     "url": "https://codestral.mistral.ai/v1/chat/completions",
+    "discoverable": true,
     "models": [
       ["codestral-latest", "Codestral", "256k"]
     ]
@@ -292,6 +296,7 @@ export const sources = {
   "scaleway": {
     "name": "Scaleway",
     "url": "https://api.scaleway.ai/v1/chat/completions",
+    "discoverable": true,
     "models": [
       ["devstral-2-123b-instruct-2512", "Devstral 2 123B", "256k"],
       ["qwen3-235b-a22b-instruct-2507", "Qwen3 235B", "128k"],
@@ -320,6 +325,7 @@ export const sources = {
   "googleai": {
     "name": "Google AI",
     "url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+    "discoverable": true,
     "models": [
       ["gemma-3-27b-it", "Gemma 3 27B", "128k"],
       ["gemma-3-12b-it", "Gemma 3 12B", "128k"],
