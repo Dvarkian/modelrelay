@@ -203,6 +203,10 @@ describe('sources data integrity', () => {
     assert.ok(Array.isArray(sources.kiro.models))
   })
 
+  it('does not enable discovery for Codestral because its API has no models endpoint', () => {
+    assert.equal(sources.codestral.discoverable, undefined)
+  })
+
   it('has expected provider structure', () => {
     for (const [providerKey, provider] of Object.entries(sources)) {
       assert.equal(typeof providerKey, 'string')
@@ -2526,6 +2530,7 @@ describe('OpenAI-compatible model discovery', () => {
     assert.equal(buildOpenAICompatibleModelsListUrl('https://api.example.com/v1/'), 'https://api.example.com/v1/models')
     assert.equal(buildOpenAICompatibleModelsListUrl('https://api.example.com/v1/chat/completions'), 'https://api.example.com/v1/models')
     assert.equal(buildOpenAICompatibleModelsListUrl('https://api.example.com/v1/models'), 'https://api.example.com/v1/models')
+    assert.equal(buildOpenAICompatibleModelsListUrl('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'), 'https://generativelanguage.googleapis.com/v1beta/openai/models')
     assert.equal(buildOpenAICompatibleModelsListUrl('api.example.com/v1'), 'https://api.example.com/v1/models')
     assert.equal(buildOpenAICompatibleModelsListUrl(''), null)
     assert.equal(buildOpenAICompatibleModelsListUrl(null), null)
@@ -2566,5 +2571,11 @@ describe('OpenAI-compatible model discovery', () => {
     assert.equal(toOpenAICompatibleDiscoveredModelMeta({}, 'openai-compatible:x'), null)
     assert.equal(toOpenAICompatibleDiscoveredModelMeta({ id: '   ' }, 'openai-compatible:x'), null)
     assert.equal(toOpenAICompatibleDiscoveredModelMeta('', 'openai-compatible:x'), null)
+  })
+
+  it('filters non-chat models from discovered provider catalogs', () => {
+    assert.equal(toOpenAICompatibleDiscoveredModelMeta({ id: 'nvidia/nemotron-content-safety' }, 'nvidia'), null)
+    assert.equal(toOpenAICompatibleDiscoveredModelMeta({ id: 'text-embedding-3-large' }, 'nvidia'), null)
+    assert.ok(toOpenAICompatibleDiscoveredModelMeta({ id: 'qwen/qwen3-coder' }, 'nvidia'))
   })
 })
