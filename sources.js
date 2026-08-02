@@ -333,7 +333,6 @@ export const sources = {
   "codestral": {
     "name": "Codestral",
     "url": "https://codestral.mistral.ai/v1/chat/completions",
-    "discoverable": true,
     "models": [
       ["codestral-latest", "Codestral", "256k"]
     ]

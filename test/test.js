@@ -203,6 +203,10 @@ describe('sources data integrity', () => {
     assert.ok(Array.isArray(sources.kiro.models))
   })
 
+  it('does not enable discovery for Codestral because its API has no models endpoint', () => {
+    assert.equal(sources.codestral.discoverable, undefined)
+  })
+
   it('has expected provider structure', () => {
     for (const [providerKey, provider] of Object.entries(sources)) {
       assert.equal(typeof providerKey, 'string')
