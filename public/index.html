@@ -167,6 +167,21 @@
       letter-spacing: 0.02em;
     }
 
+    .model-tag-row { display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }
+    .model-tag {
+      display:inline-flex; align-items:center; gap:4px; padding:2px 7px;
+      border:1px solid var(--border); border-radius:999px; background:var(--surface-alt);
+      color:var(--text-dim); font-family:monospace; font-size:0.66rem; line-height:1.35;
+    }
+    button.model-tag { cursor:pointer; transition:border-color 120ms ease,color 120ms ease,transform 120ms ease; }
+    button.model-tag:hover { border-color:var(--status-error-border); color:var(--status-error-text); transform:translateY(-1px); }
+    .tag-workbench { margin-bottom:30px; padding:16px; border:1px solid var(--border); border-radius:12px; background:var(--chat-bg); }
+    .tag-input-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; margin-top:12px; }
+    .tag-input-row input {
+      min-width:0; padding:9px 11px; border:1px solid var(--border); border-radius:7px;
+      background:var(--input-bg); color:var(--text); font-family:monospace; font-size:0.78rem;
+    }
+
     body {
       margin: 0;
       font-family: "Geist", "Inter", sans-serif;
@@ -2279,7 +2294,7 @@
         updateKPIs(allModels, data.best);
         if (openDrawerModelId) {
           const m = allModels.find(x => x.modelId === openDrawerModelId);
-          if (m) updateDrawerContent(m);
+          if (m && document.activeElement?.id !== 'model-tags-input') updateDrawerContent(m);
         }
         // Live-update logs if that tab is currently active
         if (document.getElementById('logs-view').style.display !== 'none') {
@@ -2963,6 +2978,8 @@
         const isExcludedRow = m.status === 'excluded';
         row.style.opacity = isExcludedRow || isBannedRow ? '0.5' : '1';
         modelCell.querySelector('div').firstChild.textContent = (isBannedRow ? '🚫 ' : (isExcludedRow ? '⛔ ' : '')) + m.label;
+        const tagRow = modelCell.querySelector('.model-tag-row');
+        if (tagRow) tagRow.innerHTML = renderModelTagChips(m.tags);
         modelCell.onclick = () => openDrawer(m);
 
         // Update QoS
@@ -3034,6 +3051,7 @@
           <td style="cursor:pointer;" onclick='openDrawer(${JSON.stringify(m).replace(/'/g, "&apos;")})'>
             <div style="font-weight: 600;">${m.status === 'banned' ? '🚫 ' : (m.status === 'excluded' ? '⛔ ' : '')}${m.label}</div>
             <div style="font-size: 0.75rem; color: var(--text-muted);">${m.providerKey}</div>
+            <div class="model-tag-row">${renderModelTagChips(m.tags)}</div>
           </td>
           <td>
             <div style="font-weight: 700; color: ${getQosColor(m.qos)}">${getQosDisplayValue(m.qos)}</div>
@@ -3112,6 +3130,16 @@
         case 'default-fallback': return { short: 'Default*', label: 'Default fallback' };
         default: return { short: 'Estimate*', label: 'Estimated coding score' };
       }
+    }
+
+    function renderModelTagChips(tags, editable = false) {
+      const normalized = Array.isArray(tags) ? tags : [];
+      if (normalized.length === 0) return editable
+        ? '<span style="font-size:0.75rem;color:var(--text-muted);">No tags yet</span>'
+        : '';
+      return normalized.map(tag => editable
+        ? `<button class="model-tag" onclick="removeModelTag('${escapeHtml(tag)}')" title="Remove ${escapeHtml(tag)}">${escapeHtml(tag)} ×</button>`
+        : `<span class="model-tag">${escapeHtml(tag)}</span>`).join('');
     }
 
     function getBenchmarkDisplayValue(value, source, detail = '') {
@@ -5283,11 +5311,69 @@
             <div style="font-weight: 700;">${m.ctx || 'N/A'}</div>
           </div>
         </div>
+        <div class="tag-workbench">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+            <div>
+              <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Routing Tags</div>
+              <div style="font-size:0.72rem;color:var(--text-muted);margin-top:4px;">Use <code>tag:name</code> as the model ID to route across matching models.</div>
+            </div>
+            <span style="font-size:0.68rem;color:var(--text-muted);white-space:nowrap;">shared across providers</span>
+          </div>
+          <div class="model-tag-row" style="margin-top:12px;">${renderModelTagChips(m.tags, true)}</div>
+          <div class="tag-input-row">
+            <input id="model-tags-input" value="${escapeHtml((m.tags || []).join(', ')).replace(/"/g, '&quot;')}" placeholder="coding, fast, private" onkeydown="if(event.key === 'Enter'){ event.preventDefault(); saveModelTags(); }">
+            <button class="btn" onclick="saveModelTags()">Save tags</button>
+          </div>
+          <div id="model-tags-status" style="min-height:16px;margin-top:7px;font-size:0.7rem;color:var(--text-muted);"></div>
+        </div>
         <div style="margin-top: auto; padding-top: 40px;">
           <h4 style="margin-bottom: 12px; font-size: 0.875rem;">Recent Telemetry <span style="font-weight:400; color:var(--text-muted);">(last ${pings.length} ping${pings.length !== 1 ? 's' : ''})</span></h4>
           ${chartHtml}
         </div>
       `;
+    }
+
+    async function saveModelTags() {
+      const input = document.getElementById('model-tags-input');
+      const status = document.getElementById('model-tags-status');
+      if (!input || !openDrawerModelId) return;
+      const tags = input.value.split(',').map(tag => tag.trim()).filter(Boolean);
+      if (status) {
+        status.style.color = 'var(--text-muted)';
+        status.textContent = 'Saving…';
+      }
+      try {
+        const response = await fetch('/api/models/tags', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ modelId: openDrawerModelId, tags }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Unable to save tags.');
+        await fetchData();
+        const refreshedStatus = document.getElementById('model-tags-status');
+        if (refreshedStatus) {
+          refreshedStatus.style.color = 'var(--success)';
+          refreshedStatus.textContent = payload.tags.length ? `Saved ${payload.tags.length} tag${payload.tags.length === 1 ? '' : 's'}.` : 'Tags cleared.';
+        }
+      } catch (error) {
+        const currentStatus = document.getElementById('model-tags-status');
+        if (currentStatus) {
+          currentStatus.style.color = 'var(--error)';
+          currentStatus.textContent = error.message || 'Unable to save tags.';
+        }
+      }
+    }
+
+    function removeModelTag(tag) {
+      const input = document.getElementById('model-tags-input');
+      if (!input) return;
+      input.value = input.value
+        .split(',')
+        .map(value => value.trim())
+        .filter(value => value && value.toLowerCase() !== String(tag).toLowerCase())
+        .join(', ');
+      saveModelTags();
     }
 
     function closeDrawer() {

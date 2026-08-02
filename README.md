@@ -177,6 +177,7 @@ modelrelay config export | modelrelay config import
 
 - Use `model: "auto-fastest"` to route to the best model overall
 - Use a grouped model ID such as `minimax-m2.5`, `kimi-k2.5`, or `glm4.7` to route within that model group
+- Use `model: "tag:<name>"` to route to the best available model carrying a user-defined tag
 - For grouped IDs, modelrelay selects the provider with the best current QoS for that group
 - In the Web UI, pinned models can now use either `Canonical Group` mode (default, pins the same model across providers) or `Exact Provider Row` mode from `Settings`
 - Streaming and non-streaming requests are both supported
@@ -189,6 +190,9 @@ modelrelay config export | modelrelay config import
 - Each grouped ID can represent the same model across multiple providers
 - When you select one of these IDs in `/v1/chat/completions`, modelrelay routes the request to the provider with the best current QoS for that model group
 - `auto-fastest` is also exposed and routes to the best model overall
+- Model entries include their `tags` array. Tags are assigned in the Web UI by opening a model row and editing **Routing Tags**; assignments are shared across providers for the canonical model and stored in `~/.modelrelay.json`.
+
+For example, assign `coding` to several models in the UI, then request `model: "tag:coding"`. Normal QoS ranking, availability filtering, and retry behavior choose the best currently eligible tagged model.
 
 Example:
 
@@ -197,7 +201,7 @@ Example:
   "object": "list",
   "data": [
     { "id": "auto-fastest", "object": "model", "owned_by": "router" },
-    { "id": "minimax-m2.5", "object": "model", "owned_by": "relay" },
+    { "id": "minimax-m2.5", "object": "model", "owned_by": "relay", "tags": ["coding", "agentic"] },
     { "id": "kimi-k2.5", "object": "model", "owned_by": "relay" },
     { "id": "glm4.7", "object": "model", "owned_by": "relay" }
   ]

@@ -25,6 +25,7 @@ import {
 import { buildOpenClawProviderConfig } from '../lib/onboard.js'
 import { normalizeMissingScoreId } from '../lib/score-fetcher.js'
 import { buildOpenRouterQualityIndex, fitLinearRegression, qualityLookupKeys, resolveModelQuality } from '../lib/model-quality.js'
+import { getConfiguredTagNames, getModelTagKey, getModelTags, normalizeTag, normalizeTags, setModelTags } from '../lib/tags.js'
 import { resolveAutostartExecPath, resolveAutostartNodePath } from '../lib/autostart.js'
 import { exportConfigToken, getApiKey, getApiKeyPool, getMaxTurns, getPinningMode, getProviderBaseUrl, getProviderModelId, getProviderPingIntervalMs, hasMultipleKeys, importConfigToken, normalizeConfigShape, isOpenAICompatibleInstanceKey, getBaseProviderKey, getOpenAICompatibleInstanceId, buildOpenAICompatibleInstanceKey, listOpenAICompatibleEndpoints, upsertOpenAICompatibleEndpoint, removeOpenAICompatibleEndpoint } from '../lib/config.js'
 import { buildNpmInstallInvocation, buildWindowsPostUpdateRestartCommand, getForcedUpdateVersion, getLocalUpdateTarballPath, getLocalUpdateVersion, isRunningFromSource, shouldStopAutostartBeforeUpdate } from '../lib/update.js'
@@ -911,6 +912,49 @@ describe('provider api key resolution', () => {
       shouldRetryOptionalProviderWithBearer({ apiKeys: { openrouter: 'openrouter-key' } }, 'openrouter', { token: null }, '401', 'Unauthorized'),
       false
     )
+  })
+})
+
+describe('user-defined model tags', () => {
+  it('normalizes and deduplicates tag input', () => {
+    assert.equal(normalizeTag(' Code Review! '), 'code-review')
+    assert.deepEqual(normalizeTags(['Fast', 'fast', 'agentic']), ['fast', 'agentic'])
+  })
+
+  it('stores tags under the canonical model id shared by providers', () => {
+    const config = {}
+    const updated = setModelTags(config, 'minimax-m2.5-free', ['Coding', 'agentic'])
+    assert.equal(updated.key, 'minimax/minimax-m2.5')
+    assert.deepEqual(getModelTags(config, 'minimax/minimax-m2.5:free'), ['coding', 'agentic'])
+    assert.deepEqual(getConfiguredTagNames(config), ['agentic', 'coding'])
+    assert.equal(getModelTagKey('minimax-m2.5-free'), 'minimax/minimax-m2.5')
+  })
+
+  it('clears persisted entries when the last tag is removed', () => {
+    const config = { modelTags: { 'openai/gpt-oss-120b': ['general'] } }
+    setModelTags(config, 'openai/gpt-oss-120b:free', [])
+    assert.deepEqual(config.modelTags, {})
+  })
+
+  it('routes tag requests across all matching provider rows', () => {
+    const results = [
+      mockResult({ modelId: 'one', tags: ['coding'] }),
+      mockResult({ modelId: 'two', tags: ['fast', 'coding'] }),
+      mockResult({ modelId: 'three', tags: ['reasoning'] }),
+    ]
+    assert.deepEqual(filterModelsByRequested(results, 'tag:coding').map(model => model.modelId), ['one', 'two'])
+    assert.deepEqual(filterModelsByRequested(results, 'tag:missing'), [])
+    assert.deepEqual(filterModelsByRequested(results, 'tag:'), [])
+  })
+
+  it('normalizes persisted model tags safely', () => {
+    const normalized = normalizeConfigShape({
+      modelTags: {
+        ' Model/One ': [' Fast ', 'fast', 'Code Review!', null],
+        broken: 'not-an-array',
+      },
+    })
+    assert.deepEqual(normalized.modelTags, { 'model/one': ['fast', 'code-review'] })
   })
 })
 
@@ -2011,6 +2055,12 @@ describe('package and entrypoint sanity', () => {
     assert.ok(dashboardContent.includes('Metadata estimate'))
     assert.equal(dashboardContent.includes('>SWE% <i class="sort-arrow"'), false)
     assert.equal(dashboardContent.includes('>SWE-bench</div>'), false)
+  })
+
+  it('includes the model tag editor and tag-routing guidance', () => {
+    assert.ok(dashboardContent.includes('id="model-tags-input"'))
+    assert.ok(dashboardContent.includes("fetch('/api/models/tags'"))
+    assert.ok(dashboardContent.includes('Use <code>tag:name</code>'))
   })
 })
 
