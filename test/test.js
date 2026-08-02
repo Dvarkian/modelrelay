@@ -24,6 +24,7 @@ import {
 } from '../lib/utils.js'
 import { buildOpenClawProviderConfig } from '../lib/onboard.js'
 import { normalizeMissingScoreId } from '../lib/score-fetcher.js'
+import { buildOpenRouterQualityIndex, fitLinearRegression, qualityLookupKeys, resolveModelQuality } from '../lib/model-quality.js'
 import { resolveAutostartExecPath, resolveAutostartNodePath } from '../lib/autostart.js'
 import { exportConfigToken, getApiKey, getApiKeyPool, getMaxTurns, getPinningMode, getProviderBaseUrl, getProviderModelId, getProviderPingIntervalMs, hasMultipleKeys, importConfigToken, normalizeConfigShape, isOpenAICompatibleInstanceKey, getBaseProviderKey, getOpenAICompatibleInstanceId, buildOpenAICompatibleInstanceKey, listOpenAICompatibleEndpoints, upsertOpenAICompatibleEndpoint, removeOpenAICompatibleEndpoint } from '../lib/config.js'
 import { buildNpmInstallInvocation, buildWindowsPostUpdateRestartCommand, getForcedUpdateVersion, getLocalUpdateTarballPath, getLocalUpdateVersion, isRunningFromSource, shouldStopAutostartBeforeUpdate } from '../lib/update.js'
@@ -913,6 +914,75 @@ describe('provider api key resolution', () => {
   })
 })
 
+describe('OpenRouter model quality scoring', () => {
+  const catalog = [
+    {
+      id: 'vendor/direct-model',
+      created: 1_750_000_000,
+      context_length: 131072,
+      supported_parameters: ['reasoning', 'tools', 'structured_outputs'],
+      benchmarks: {
+        artificial_analysis: { coding_index: 72 },
+        design_arena: [{ arena: 'models', category: 'codecategories', elo: 1300 }],
+      },
+    },
+    {
+      id: 'vendor/training-model',
+      benchmarks: {
+        artificial_analysis: { coding_index: 52 },
+        design_arena: [{ arena: 'models', category: 'codecategories', elo: 1100 }],
+      },
+    },
+    {
+      id: 'vendor/arena-only:free',
+      benchmarks: {
+        design_arena: [{ arena: 'models', category: 'codecategories', elo: 1200 }],
+      },
+    },
+    {
+      id: 'vendor/metadata-only:free',
+      created: 1_750_000_000,
+      context_length: 262144,
+      supported_parameters: ['reasoning', 'tools'],
+    },
+  ]
+
+  it('normalizes provider and runtime variants for cross-catalog matching', () => {
+    assert.ok(qualityLookupKeys('deepseek-v4-flash:0731').includes('deepseek-v4-flash-0731'))
+    assert.ok(qualityLookupKeys('inclusionai/ling-3.0-flash:free').includes('ling-3.0-flash'))
+  })
+
+  it('fits a deterministic linear regression for Design Arena conversion', () => {
+    assert.deepEqual(fitLinearRegression([[1000, 40], [1200, 60]]), {
+      slope: 0.1,
+      intercept: -60,
+      sampleSize: 2,
+    })
+  })
+
+  it('uses coding index, Design Arena, then metadata in that order', () => {
+    const quality = buildOpenRouterQualityIndex(catalog, [...catalog].reverse(), 1_760_000_000_000)
+    const direct = resolveModelQuality(quality, 'vendor/direct-model', 0.99)
+    const arena = resolveModelQuality(quality, 'arena-only-free', 0.99)
+    const metadata = resolveModelQuality(quality, 'vendor/metadata-only:free', 0.99)
+
+    assert.equal(direct.score, 0.72)
+    assert.equal(direct.source, 'artificial-analysis')
+    assert.equal(direct.isEstimated, false)
+    assert.equal(arena.score, 0.62)
+    assert.equal(arena.source, 'design-arena')
+    assert.equal(metadata.source, 'metadata')
+    assert.ok(metadata.score >= 0.35 && metadata.score <= 0.65)
+  })
+
+  it('labels local and blind defaults when no catalog match exists', () => {
+    const quality = buildOpenRouterQualityIndex(catalog)
+    assert.equal(resolveModelQuality(quality, 'unknown/local', 0.61).source, 'local-fallback')
+    assert.equal(resolveModelQuality(quality, 'unknown/blind').score, 0.45)
+    assert.equal(resolveModelQuality(quality, 'unknown/blind').source, 'default-fallback')
+  })
+})
+
 describe('dynamic model score resolution', () => {
   it('extracts Ollama model records from tags payloads', () => {
     const payload = {
@@ -980,7 +1050,7 @@ describe('dynamic model score resolution', () => {
     assert.equal(getScore('ministral-3:3b'), 0.548)
     assert.equal(getScore('ministral-3:8b'), 0.616)
     assert.equal(getScore('mistral-large-3:675b'), 0.58)
-    assert.equal(getScore('nemotron-3-super'), 0.6047)
+    assert.equal(getScore('nemotron-3-super'), 0.377)
     assert.equal(getScore('qwen/qwen3.6-plus-preview:free'), 0.68)
     assert.equal(getScore('qwen3-vl:235b'), 0.7)
     assert.equal(getScore('qwen3-vl:235b-instruct'), 0.7)
@@ -999,7 +1069,7 @@ describe('dynamic model score resolution', () => {
     assert.equal(getScore('arcee-ai/trinity-large-thinking:free'), 0.632)
     assert.equal(getScore('bytedance-seed/dola-seed-2.0-pro:free'), 0.765)
     assert.equal(getScore('glm-5.1'), 0.584)
-    assert.equal(getScore('google/gemma-4-26b-a4b-it:free'), 0.771)
+    assert.equal(getScore('google/gemma-4-26b-a4b-it:free'), 0.393)
     assert.equal(getScore('google/gemma-4-31b-it:free'), 0.8)
     assert.equal(getScore('kimi-k2.6'), 0.802)
   })
@@ -1079,9 +1149,9 @@ describe('dynamic model score resolution', () => {
   it('uses researched score entries for newly discovered OpenRouter free coding models', () => {
     const cases = [
       ['baidu/cobuddy:free', 0.715],
-      ['deepseek-v4-flash-free', 0.79],
+      ['deepseek-v4-flash-free', 0.521],
       ['inclusionai/ring-2.6-1t:free', 0.727],
-      ['nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free', 0.744],
+      ['nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free', 0.138],
       ['poolside/laguna-m.1:free', 0.725],
       ['poolside/laguna-xs.2:free', 0.682],
       ['ring-2.6-1t-free', 0.727],
@@ -1096,11 +1166,11 @@ describe('dynamic model score resolution', () => {
     const cases = [
       ['tencent/hy3:free', 0.78],
       ['hy3-free', 0.78],
-      ['poolside/laguna-xs-2.1:free', 0.709],
-      ['cohere/north-mini-code:free', 0.676],
-      ['north-mini-code-free', 0.676],
-      ['nvidia/nemotron-3-ultra-550b-a55b:free', 0.719],
-      ['nemotron-3-ultra-free', 0.719],
+      ['poolside/laguna-xs-2.1:free', 0.592],
+      ['cohere/north-mini-code:free', 0.365],
+      ['north-mini-code-free', 0.365],
+      ['nvidia/nemotron-3-ultra-550b-a55b:free', 0.493],
+      ['nemotron-3-ultra-free', 0.493],
     ]
 
     for (const [modelId, expectedScore] of cases) {
@@ -1110,21 +1180,33 @@ describe('dynamic model score resolution', () => {
 
   it('resolves every coding model reported by the refresh-scores audit', () => {
     const cases = [
-      ['glm-5.2', 0.787],
-      ['z-ai/glm-5.2', 0.787],
+      ['glm-5.2', 0.688],
+      ['z-ai/glm-5.2', 0.688],
       ['kimi-k2.7-code', 0.62],
       ['moonshotai/kimi-k2.7-code', 0.62],
-      ['mimo-v2.5-free', 0.561],
-      ['minimax-m3', 0.805],
-      ['minimaxai/minimax-m3', 0.805],
-      ['nemotron-3-ultra', 0.719],
-      ['stepfun/step-3.7-flash:free', 0.737],
-      ['stepfun-ai/step-3.7-flash', 0.737],
+      ['mimo-v2.5-free', 0.568],
+      ['minimax-m3', 0.586],
+      ['minimaxai/minimax-m3', 0.586],
+      ['nemotron-3-ultra', 0.493],
+      ['stepfun/step-3.7-flash:free', 0.396],
+      ['stepfun-ai/step-3.7-flash', 0.396],
     ]
 
     for (const [modelId, expectedScore] of cases) {
       assert.equal(getScore(modelId), expectedScore)
     }
+  })
+
+  it('keeps offline fallbacks for the newest discovered free models', () => {
+    const cases = [
+      ['deepseek-v4-flash:0731', 0.691],
+      ['kimi-k3', 0.762],
+      ['inclusionai/ling-3.0-flash:free', 0.608],
+      ['ling-3.0-flash-free', 0.608],
+      ['poolside/laguna-s-2.1:free', 0.625],
+      ['laguna-s-2.1-free', 0.625],
+    ]
+    for (const [modelId, expectedScore] of cases) assert.equal(getScore(modelId), expectedScore)
   })
 
   it('includes newly available NIM coding models in the static catalog', () => {

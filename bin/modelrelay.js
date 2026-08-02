@@ -190,14 +190,22 @@ async function main() {
 
   if (cliArgs.command === 'refresh-scores') {
     const config = loadConfig();
-    const { getModelsNeedingScores } = await import('../lib/score-fetcher.js');
-    const needing = await getModelsNeedingScores(config);
-    if (needing.length === 0) {
-      console.log(chalk.green('✔ All models have verified scores in scores.js.'));
-    } else {
-      console.log(chalk.yellow(`Found ${needing.length} models needing SWE-bench scores:`));
-      needing.forEach(m => console.log(chalk.dim(` - ${m}`)));
-      console.log('\nPlease provide this list to Gemini to search for verified scores.');
+    const { getModelScoreAudit } = await import('../lib/score-fetcher.js');
+    const audit = await getModelScoreAudit(config);
+    console.log(chalk.green(`Scored ${audit.entries.length} configured or discovered models from OpenRouter catalog data:`));
+    for (const entry of audit.entries) {
+      const fallback = entry.source === 'artificial-analysis' ? '' : ' [fallback]';
+      console.log(`${(entry.score * 100).toFixed(1).padStart(5)}  ${entry.modelId}  ${entry.source}${fallback} — ${entry.detail}`);
+    }
+    const counts = Object.groupBy
+      ? Object.groupBy(audit.entries, entry => entry.source)
+      : audit.entries.reduce((groups, entry) => ((groups[entry.source] ||= []).push(entry), groups), {});
+    console.log('\nSources: ' + Object.entries(counts).map(([source, rows]) => `${source}=${rows.length}`).join(', '));
+    if (audit.regression) {
+      console.log(chalk.dim(`Design Arena regression trained on ${audit.regression.sampleSize} catalog models.`));
+    }
+    for (const failure of audit.providerErrors) {
+      console.log(chalk.yellow(`Warning: ${failure.providerKey} discovery failed: ${failure.error}`));
     }
     return;
   }
