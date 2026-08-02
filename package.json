@@ -44,6 +44,7 @@
     "public/",
     "sources.js",
     "scores.js",
+    "tags.js",
     "README.md",
     "LICENSE"
   ],
