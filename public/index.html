@@ -1888,7 +1888,7 @@
                   id="arrow-model">↕</i></th>
               <th class="sortable" onclick="setSort('qos')" id="th-qos">QoS <i class="sort-arrow"
                   id="arrow-qos">↕</i></th>
-              <th class="sortable" onclick="setSort('intell')" id="th-intell">SWE% <i class="sort-arrow"
+              <th class="sortable" onclick="setSort('intell')" id="th-intell" title="Coding quality score; source is shown beside each value">Coding <i class="sort-arrow"
                   id="arrow-intell">↕</i></th>
               <th class="sortable text-right" onclick="setSort('ping')" id="th-ping">Ping <i
                   class="sort-arrow" id="arrow-ping">↕</i></th>
@@ -2969,9 +2969,9 @@
         const qosCell = row.cells[2];
         qosCell.innerHTML = `<div style="font-weight: 700; color: ${getQosColor(m.qos)}">${getQosDisplayValue(m.qos)}</div>`;
 
-        // Update Intell
+        // Update coding quality score
         const intellCell = row.cells[3];
-        intellCell.innerHTML = `<div style="font-weight: 600;">${getBenchmarkTableDisplayValue(m.intell, m.isEstimatedScore)}</div>`;
+        intellCell.innerHTML = `<div style="font-weight: 600;">${getBenchmarkTableDisplayValue(m.intell, m.qualitySource, m.qualityDetail)}</div>`;
 
         // Update status dot and text
         const statusCell = row.cells[6];
@@ -3038,7 +3038,7 @@
           <td>
             <div style="font-weight: 700; color: ${getQosColor(m.qos)}">${getQosDisplayValue(m.qos)}</div>
           </td>
-          <td><div style="font-weight: 600;">${getBenchmarkTableDisplayValue(m.intell, m.isEstimatedScore)}</div></td>
+          <td><div style="font-weight: 600;">${getBenchmarkTableDisplayValue(m.intell, m.qualitySource, m.qualityDetail)}</div></td>
           <td class="text-right">
             <div style="display: flex; align-items: center; gap: 8px; justify-content: flex-end;">
               <div class="ping-dot ${hasPing ? 'active ' + pingClass : ''}" style="--speed: ${pingSpeed}"></div>
@@ -3103,19 +3103,27 @@
       return n;
     }
 
-    function getBenchmarkDisplayValue(value, isEstimated = false) {
-      const n = Number(value);
-      if (!Number.isFinite(n) || n <= 0) return '—';
-      const pill = isEstimated ? '<span class="pill-estimate">Unknown</span>' : '';
-      return `${Math.round(n * 100)}${pill}`;
+    function getQualitySourceDisplay(source) {
+      switch (source) {
+        case 'artificial-analysis': return { short: 'AA', label: 'Artificial Analysis coding index' };
+        case 'design-arena': return { short: 'Arena*', label: 'Design Arena estimate' };
+        case 'metadata': return { short: 'Meta*', label: 'Metadata estimate' };
+        case 'local-fallback': return { short: 'Offline*', label: 'Offline fallback' };
+        case 'default-fallback': return { short: 'Default*', label: 'Default fallback' };
+        default: return { short: 'Estimate*', label: 'Estimated coding score' };
+      }
     }
 
-    function getBenchmarkTableDisplayValue(value, isEstimated = false) {
+    function getBenchmarkDisplayValue(value, source, detail = '') {
       const n = Number(value);
       if (!Number.isFinite(n) || n <= 0) return '—';
-      const score = Math.round(n * 100);
-      const pill = isEstimated ? '<span class="pill-estimate">Unknown</span>' : '';
-      return `${score}${pill}`;
+      const sourceDisplay = getQualitySourceDisplay(source);
+      const title = escapeHtml(`${sourceDisplay.label}${detail ? ` — ${detail}` : ''}`);
+      return `<span title="${title}">${Math.round(n * 100)}<span class="pill-estimate">${sourceDisplay.short}</span></span>`;
+    }
+
+    function getBenchmarkTableDisplayValue(value, source, detail = '') {
+      return getBenchmarkDisplayValue(value, source, detail);
     }
 
     function formatIsoDateTime(value) {
@@ -3435,13 +3443,13 @@
           <div style="display: flex; flex-direction: column; gap: 20px;">
             <div>
               <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.875rem;">
-                Minimum SWE Score
+                Minimum Coding Score
               </label>
               <div style="display: flex; align-items: center; gap: 8px;">
                 <input type="number" id="min-swe-score" min="0" max="100" step="1" value="${minSweScore !== null ? Math.round(minSweScore * 100) : ''}" placeholder="e.g. 50" style="width: 80px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 0.875rem;">
                 <span style="color: var(--text-muted); font-size: 0.875rem;">%</span>
               </div>
-              <p style="color: var(--text-muted); font-size: 0.78rem; margin-top: 6px;">Models with SWE% below this threshold will be excluded from pinging and routing.</p>
+              <p style="color: var(--text-muted); font-size: 0.78rem; margin-top: 6px;">Models with a coding quality score below this threshold will be excluded from pinging and routing.</p>
             </div>
 
             <div>
@@ -3503,7 +3511,7 @@
 
     function formatSyncScore(model) {
       if (typeof model?.intell !== 'number' || !Number.isFinite(model.intell)) return 'Unknown';
-      return `${Math.round(model.intell * 100)}%${model.isEstimatedScore ? ' estimated' : ''}`;
+      return `${Math.round(model.intell * 100)} (${getQualitySourceDisplay(model.qualitySource).label})`;
     }
 
     function renderProviderSyncSuccess(providerName, models) {
@@ -3511,7 +3519,7 @@
       const items = models
         .slice()
         .sort((a, b) => (a.label || a.modelId || '').localeCompare(b.label || b.modelId || ''))
-        .map(model => `<li><b>${escapeHtml(model.label || model.modelId)}</b><br><span style="color:var(--text-muted);">${escapeHtml(model.modelId)} • ${escapeHtml(model.ctx || '128k')} • SWE ${escapeHtml(formatSyncScore(model))}</span></li>`)
+        .map(model => `<li><b>${escapeHtml(model.label || model.modelId)}</b><br><span style="color:var(--text-muted);">${escapeHtml(model.modelId)} • ${escapeHtml(model.ctx || '128k')} • Coding ${escapeHtml(formatSyncScore(model))}</span></li>`)
         .join('');
 
       openProviderSyncModal(
@@ -5266,8 +5274,9 @@
         <div id="drawer-ping-status" style="margin: -8px 0 16px; font-size: 0.75rem; color: var(--text-muted);"></div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 32px;">
           <div style="background: var(--chat-bg); padding: 16px; border-radius: 12px; border: 1px solid var(--border);">
-            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">SWE-bench</div>
-            <div style="font-weight: 700;">${getBenchmarkDisplayValue(m.intell, m.isEstimatedScore)}</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Coding Score</div>
+            <div style="font-weight: 700;">${getBenchmarkDisplayValue(m.intell, m.qualitySource, m.qualityDetail)}</div>
+            <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 6px;">${escapeHtml(getQualitySourceDisplay(m.qualitySource).label)}${m.qualityDetail ? ` · ${escapeHtml(m.qualityDetail)}` : ''}</div>
           </div>
           <div style="background: var(--chat-bg); padding: 16px; border-radius: 12px; border: 1px solid var(--border);">
             <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Context</div>

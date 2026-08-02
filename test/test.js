@@ -1987,6 +1987,7 @@ describe('pinned model routing', () => {
 describe('package and entrypoint sanity', () => {
   const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
   const binContent = readFileSync(join(ROOT, 'bin/modelrelay.js'), 'utf8')
+  const dashboardContent = readFileSync(join(ROOT, 'public/index.html'), 'utf8')
 
   it('package fields are valid', () => {
     assert.ok(pkg.name)
@@ -2001,6 +2002,15 @@ describe('package and entrypoint sanity', () => {
     assert.ok(binContent.startsWith('#!/usr/bin/env node'))
     assert.ok(binContent.includes("from '../lib/utils.js'"))
     assert.ok(binContent.includes("from '../lib/onboard.js'"))
+  })
+
+  it('labels dashboard scores by the current coding-quality source', () => {
+    assert.ok(dashboardContent.includes('>Coding <i class="sort-arrow"'))
+    assert.ok(dashboardContent.includes('Artificial Analysis coding index'))
+    assert.ok(dashboardContent.includes('Design Arena estimate'))
+    assert.ok(dashboardContent.includes('Metadata estimate'))
+    assert.equal(dashboardContent.includes('>SWE% <i class="sort-arrow"'), false)
+    assert.equal(dashboardContent.includes('>SWE-bench</div>'), false)
   })
 })
 
