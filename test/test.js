@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
 
 import { sources, MODELS, canonicalizeModelId, getPreferredModelContext, getPreferredModelLabel, getScore, resolveAliasedModelId } from '../sources.js'
+import { TAG_VOCABULARY, MODEL_TAGS, getModelTags as getBuiltInModelTags } from '../tags.js'
 import {
   getAvg,
   getVerdict,
@@ -25,6 +26,7 @@ import {
 import { buildOpenClawProviderConfig } from '../lib/onboard.js'
 import { normalizeMissingScoreId } from '../lib/score-fetcher.js'
 import { buildOpenRouterQualityIndex, fitLinearRegression, qualityLookupKeys, resolveModelQuality } from '../lib/model-quality.js'
+import { getConfiguredTagNames, getModelTagKey, getModelTags as getUserModelTags, normalizeTag, normalizeTags, setModelTags } from '../lib/tags.js'
 import { resolveAutostartExecPath, resolveAutostartNodePath } from '../lib/autostart.js'
 import { exportConfigToken, getApiKey, getApiKeyPool, getMaxTurns, getPinningMode, getProviderBaseUrl, getProviderModelId, getProviderPingIntervalMs, hasMultipleKeys, importConfigToken, normalizeConfigShape, isOpenAICompatibleInstanceKey, getBaseProviderKey, getOpenAICompatibleInstanceId, buildOpenAICompatibleInstanceKey, listOpenAICompatibleEndpoints, upsertOpenAICompatibleEndpoint, removeOpenAICompatibleEndpoint } from '../lib/config.js'
 import { buildNpmInstallInvocation, buildWindowsPostUpdateRestartCommand, getForcedUpdateVersion, getLocalUpdateTarballPath, getLocalUpdateVersion, isRunningFromSource, shouldStopAutostartBeforeUpdate } from '../lib/update.js'
@@ -243,6 +245,40 @@ describe('sources data integrity', () => {
       const key = `${providerKey}/${modelId}`
       assert.equal(seen.has(key), false, `Duplicate model key found: ${key}`)
       seen.add(key)
+    }
+  })
+})
+
+describe('tags data integrity', () => {
+  const knownModelIds = new Set(MODELS.map(([modelId]) => modelId))
+
+  it('has no duplicate entries in TAG_VOCABULARY', () => {
+    assert.equal(TAG_VOCABULARY.length, new Set(TAG_VOCABULARY).size)
+  })
+
+  it('only assigns tags that are in TAG_VOCABULARY', () => {
+    for (const [modelId, tags] of Object.entries(MODEL_TAGS)) {
+      for (const tag of tags) {
+        assert.ok(TAG_VOCABULARY.includes(tag), `Unknown tag "${tag}" on ${modelId}`)
+      }
+    }
+  })
+
+  it('does not assign duplicate tags to the same model', () => {
+    for (const [modelId, tags] of Object.entries(MODEL_TAGS)) {
+      assert.equal(tags.length, new Set(tags).size, `Duplicate tag on ${modelId}`)
+    }
+  })
+
+  it('only keys MODEL_TAGS by model IDs that exist in sources.js', () => {
+    for (const modelId of Object.keys(MODEL_TAGS)) {
+      assert.ok(knownModelIds.has(modelId), `MODEL_TAGS has a stale key: ${modelId}`)
+    }
+  })
+
+  it('assigns at least one tag to every model in sources.js', () => {
+    for (const modelId of knownModelIds) {
+      assert.ok(getBuiltInModelTags(modelId).length > 0, `No tags assigned to ${modelId}`)
     }
   })
 })
@@ -911,6 +947,49 @@ describe('provider api key resolution', () => {
       shouldRetryOptionalProviderWithBearer({ apiKeys: { openrouter: 'openrouter-key' } }, 'openrouter', { token: null }, '401', 'Unauthorized'),
       false
     )
+  })
+})
+
+describe('user-defined model tags', () => {
+  it('normalizes and deduplicates tag input', () => {
+    assert.equal(normalizeTag(' Code Review! '), 'code-review')
+    assert.deepEqual(normalizeTags(['Fast', 'fast', 'agentic']), ['fast', 'agentic'])
+  })
+
+  it('stores tags under the canonical model id shared by providers', () => {
+    const config = {}
+    const updated = setModelTags(config, 'minimax-m2.5-free', ['Coding', 'agentic'])
+    assert.equal(updated.key, 'minimax/minimax-m2.5')
+    assert.deepEqual(getUserModelTags(config, 'minimax/minimax-m2.5:free'), ['coding', 'agentic'])
+    assert.deepEqual(getConfiguredTagNames(config), ['agentic', 'coding'])
+    assert.equal(getModelTagKey('minimax-m2.5-free'), 'minimax/minimax-m2.5')
+  })
+
+  it('clears persisted entries when the last tag is removed', () => {
+    const config = { modelTags: { 'openai/gpt-oss-120b': ['general'] } }
+    setModelTags(config, 'openai/gpt-oss-120b:free', [])
+    assert.deepEqual(config.modelTags, {})
+  })
+
+  it('routes tag requests across all matching provider rows', () => {
+    const results = [
+      mockResult({ modelId: 'one', tags: ['coding'] }),
+      mockResult({ modelId: 'two', tags: ['fast', 'coding'] }),
+      mockResult({ modelId: 'three', tags: ['reasoning'] }),
+    ]
+    assert.deepEqual(filterModelsByRequested(results, 'tag:coding').map(model => model.modelId), ['one', 'two'])
+    assert.deepEqual(filterModelsByRequested(results, 'tag:missing'), [])
+    assert.deepEqual(filterModelsByRequested(results, 'tag:'), [])
+  })
+
+  it('normalizes persisted model tags safely', () => {
+    const normalized = normalizeConfigShape({
+      modelTags: {
+        ' Model/One ': [' Fast ', 'fast', 'Code Review!', null],
+        broken: 'not-an-array',
+      },
+    })
+    assert.deepEqual(normalized.modelTags, { 'model/one': ['fast', 'code-review'] })
   })
 })
 
@@ -1943,6 +2022,44 @@ describe('model grouping and filtering', () => {
   })
 })
 
+describe('model tag routing', () => {
+  // moonshotai/kimi-k2.7-code -> ['coding'], qwen-qwq-32b -> ['reasoning'], z-ai/glm5 -> ['agentic', 'coding', 'general']
+  const taggedResults = [
+    mockResult({ modelId: 'moonshotai/kimi-k2.7-code', label: 'Kimi K2.7 Code' }),
+    mockResult({ modelId: 'qwen-qwq-32b', label: 'QwQ 32B' }),
+    mockResult({ modelId: 'z-ai/glm5', label: 'GLM 5' }),
+  ]
+
+  it('routes tag: requests to models carrying that tag', () => {
+    const filtered = filterModelsByRequested(taggedResults, 'tag:reasoning', canonicalizeModelId)
+    assert.deepEqual(filtered.map(r => r.modelId), ['qwen-qwq-32b'])
+  })
+
+  it('matches a model tagged with multiple tags under each of its tags', () => {
+    const codingMatches = filterModelsByRequested(taggedResults, 'tag:coding', canonicalizeModelId)
+    assert.ok(codingMatches.some(r => r.modelId === 'moonshotai/kimi-k2.7-code'))
+    assert.ok(codingMatches.some(r => r.modelId === 'z-ai/glm5'))
+
+    const agenticMatches = filterModelsByRequested(taggedResults, 'tag:agentic', canonicalizeModelId)
+    assert.deepEqual(agenticMatches.map(r => r.modelId), ['z-ai/glm5'])
+  })
+
+  it('is case-insensitive for tag names', () => {
+    const filtered = filterModelsByRequested(taggedResults, 'TAG:Reasoning', canonicalizeModelId)
+    assert.deepEqual(filtered.map(r => r.modelId), ['qwen-qwq-32b'])
+  })
+
+  it('returns no models for an unknown tag', () => {
+    const filtered = filterModelsByRequested(taggedResults, 'tag:nonexistent', canonicalizeModelId)
+    assert.equal(filtered.length, 0)
+  })
+
+  it('returns no models when no result carries the requested tag', () => {
+    const filtered = filterModelsByRequested([mockResult({ modelId: 'moonshotai/kimi-k2.7-code' })], 'tag:reasoning', canonicalizeModelId)
+    assert.equal(filtered.length, 0)
+  })
+})
+
 describe('pinned model routing', () => {
   const results = [
     mockResult({ modelId: 'nvidia/glm4.7', label: 'GLM 4.7', providerKey: 'nvidia', pings: [{ ms: 90, code: '200' }], intell: 0.7 }),
@@ -2011,6 +2128,12 @@ describe('package and entrypoint sanity', () => {
     assert.ok(dashboardContent.includes('Metadata estimate'))
     assert.equal(dashboardContent.includes('>SWE% <i class="sort-arrow"'), false)
     assert.equal(dashboardContent.includes('>SWE-bench</div>'), false)
+  })
+
+  it('includes the model tag editor and tag-routing guidance', () => {
+    assert.ok(dashboardContent.includes('id="model-tags-input"'))
+    assert.ok(dashboardContent.includes("fetch('/api/models/tags'"))
+    assert.ok(dashboardContent.includes('Use <code>tag:name</code>'))
   })
 })
 
