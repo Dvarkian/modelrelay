@@ -4,7 +4,7 @@
 
 After completing any feature or fix, the agent MUST:
 
-1. Run `pnpm test` to verify all unit tests pass (62 tests across 11 suites)
+1. Run `pnpm test` to verify the complete unit-test suite passes
 2. If any test fails, fix the issue immediately
 3. Re-run `pnpm test` until all tests pass
 
@@ -80,3 +80,26 @@ Do not bump the major version.
 - **CLI arg parsing** — current router flags (`--port`, `--no-log`, `--ban`, `--onboard`)
 - **Package sanity** — package.json fields, bin entry exists, shebang, ESM imports
 
+## Model Quality Scores
+
+Model quality is refreshed from OpenRouter's public Models API at runtime and cached for 24 hours. Use this source hierarchy, in order:
+
+1. `benchmarks.artificial_analysis.coding_index / 100` (preferred)
+2. Design Arena `models/codecategories` Elo converted to a 0–1 coding score by the regression trained from catalog models that have both values
+3. The bounded metadata estimate in `lib/model-quality.js` (popularity, recency, coding capabilities, and context length)
+4. `scores.js` as an offline fallback
+5. `0.45` only when no catalog match or local fallback exists
+
+Design Arena, metadata, local, and default scores MUST remain labeled as fallbacks. Never describe an estimated score as verified or silently substitute an invented benchmark.
+
+### Audit Command
+
+From the project checkout, always run the source version of the command—not a globally installed package:
+
+```powershell
+node .\bin\modelrelay.js refresh-scores
+```
+
+The command requires network access. It prints every configured or discovered model in descending score order, the source used, fallback markers, source counts, and provider-discovery warnings. A provider warning means the audit is incomplete; do not conclude that all models were checked.
+
+When model aliases appear as separate rows, add canonical aliases in `sources.js` and a dated offline fallback in `scores.js`, then rerun the command. Keep score computation in `lib/model-quality.js` and add pure-logic tests in `test/test.js` whenever the hierarchy, matching, regression, or metadata formula changes.
