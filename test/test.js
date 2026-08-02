@@ -1596,6 +1596,11 @@ describe('isRetryableProxyStatus', () => {
     assert.equal(isRetryableProxyStatus(503), true)
   })
 
+  it('returns true for 410 (model retired/gone upstream)', () => {
+    assert.equal(isRetryableProxyStatus(410), true)
+    assert.equal(isRetryableProxyStatus('410'), true)
+  })
+
   it('returns false for non-retryable statuses', () => {
     assert.equal(isRetryableProxyStatus(200), false)
     assert.equal(isRetryableProxyStatus(400), false)
