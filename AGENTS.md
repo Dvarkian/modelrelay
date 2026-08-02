@@ -80,3 +80,12 @@ Do not bump the major version.
 - **CLI arg parsing** — current router flags (`--port`, `--no-log`, `--ban`, `--onboard`)
 - **Package sanity** — package.json fields, bin entry exists, shebang, ESM imports
 
+## Checking for New Models
+
+Run the model audit command to find configured or discovered models that do not yet have verified SWE-bench scores:
+
+```bash
+modelrelay refresh-scores
+```
+
+The command reports any models needing scores. Use the output to research verified scores and update `scores.js` as appropriate.
