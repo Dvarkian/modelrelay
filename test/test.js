@@ -2144,6 +2144,12 @@ describe('package and entrypoint sanity', () => {
     assert.ok(dashboardContent.includes("fetch('/api/models/tags'"))
     assert.ok(dashboardContent.includes('Use <code>tag:name</code>'))
   })
+
+  it('includes working provider key reveal and copy controls', () => {
+    assert.ok(dashboardContent.includes('toggleProviderKeyVisibility'))
+    assert.ok(dashboardContent.includes('getConfiguredProviderKey'))
+    assert.ok(dashboardContent.includes('copyProviderKey'))
+  })
 })
 
 describe('multi-account round-robin', () => {

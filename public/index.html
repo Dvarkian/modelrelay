@@ -3928,7 +3928,8 @@
               </div>
               <div class="form-group" style="display:flex; gap:8px; align-items:center;">
                 <input type="password" id="key-${p.key}" placeholder="${p.hasKey ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (Refresh Token Configured)' : 'Paste Kiro refresh token...'}" style="flex:1; background:var(--input-bg); color:var(--text);" onkeydown="if(event.key==='Enter'){event.preventDefault(); saveKiroRefreshToken();}">
-                <button onclick="const i=document.getElementById('key-${p.key}'); i.type=i.type==='password'?'text':'password'; this.textContent=i.type==='password'?'👁':'🙈';" style="border:1px solid var(--border); background:var(--input-bg); color:var(--text); cursor:pointer; padding:8px 10px; border-radius:6px; font-size:0.85rem; white-space:nowrap;">👁</button>
+                <button onclick="toggleProviderKeyVisibility('${p.key}', this)" title="Show or hide token" aria-label="Show or hide token" style="border:1px solid var(--border); background:var(--input-bg); color:var(--text); cursor:pointer; padding:8px 10px; border-radius:6px; font-size:0.85rem; white-space:nowrap;">👁</button>
+                ${p.hasKey ? `<button onclick="copyProviderKey('${p.key}', this)" title="Copy token" style="border:1px solid var(--border); background:var(--input-bg); color:var(--text); cursor:pointer; padding:8px 10px; border-radius:6px; font-size:0.78rem; white-space:nowrap;">Copy</button>` : ''}
                 <button onclick="saveKiroRefreshToken()" style="border:1px solid var(--status-success-border); background:var(--status-success-bg); color:var(--status-success-text); cursor:pointer; padding:8px 12px; border-radius:6px; font-size:0.8rem; font-weight:600; white-space:nowrap;">Save Token</button>
                 ${p.hasKey ? `<button onclick="deleteProviderKey('${p.key}')" style="border:1px solid var(--status-error-border); background:var(--status-error-bg); color:var(--status-error-text); cursor:pointer; padding:8px 12px; border-radius:6px; font-size:0.8rem; font-weight:600; white-space:nowrap;">Delete Token</button>` : ''}
               </div>
@@ -3970,7 +3971,8 @@
             </div>
             <div class="form-group" style="display:flex; gap:8px; align-items:center;">
               <input type="password" id="key-${p.key}" placeholder="${p.hasKey ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (' + (tokenOptional ? 'API Key Configured' : 'Key Configured') + ')' : (tokenOptional ? 'Enter API Key (optional)...' : 'Enter API Key...')}" style="flex:1; background:var(--input-bg); color:var(--text);" onblur="updateProviderKey('${p.key}')">
-              <button onclick="const i=document.getElementById('key-${p.key}'); i.type=i.type==='password'?'text':'password'; this.textContent=i.type==='password'?'👁':'🙈';" style="border:1px solid var(--border); background:var(--input-bg); color:var(--text); cursor:pointer; padding:8px 10px; border-radius:6px; font-size:0.85rem; white-space:nowrap;">👁</button>
+              <button onclick="toggleProviderKeyVisibility('${p.key}', this)" title="Show or hide API key" aria-label="Show or hide API key" style="border:1px solid var(--border); background:var(--input-bg); color:var(--text); cursor:pointer; padding:8px 10px; border-radius:6px; font-size:0.85rem; white-space:nowrap;">👁</button>
+              ${p.hasKey ? `<button onclick="copyProviderKey('${p.key}', this)" title="Copy API key" style="border:1px solid var(--border); background:var(--input-bg); color:var(--text); cursor:pointer; padding:8px 10px; border-radius:6px; font-size:0.78rem; white-space:nowrap;">Copy</button>` : ''}
               ${p.hasKey ? `<button onclick="deleteProviderKey('${p.key}')" style="border:1px solid var(--status-error-border); background:var(--status-error-bg); color:var(--status-error-text); cursor:pointer; padding:8px 12px; border-radius:6px; font-size:0.8rem; font-weight:600; white-space:nowrap;">Delete Key</button>` : ''}
             </div>
             <div class="form-group" style="display:flex; gap:8px; align-items:center; margin-top:8px;">
@@ -4028,6 +4030,12 @@
       const input = document.getElementById(`key-${key}`);
       const val = input.value.trim();
       if (!val) return;
+      if (input.dataset.revealedKey === val) {
+        input.value = '';
+        input.type = 'password';
+        delete input.dataset.revealedKey;
+        return;
+      }
       await fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -4035,6 +4043,76 @@
       });
       input.value = '';
       loadSettings();
+    }
+
+    async function getConfiguredProviderKey(providerKey) {
+      const res = await fetch('/api/config');
+      if (!res.ok) throw new Error('Failed to load the configured key.');
+      const providers = await res.json();
+      const provider = providers.find(item => item.key === providerKey);
+      const account = provider && Array.isArray(provider.apiKeyPool) ? provider.apiKeyPool[0] : null;
+      return account && typeof account.key === 'string' ? account.key : '';
+    }
+
+    async function toggleProviderKeyVisibility(providerKey, button) {
+      const input = document.getElementById(`key-${providerKey}`);
+      if (!input) return;
+
+      if (input.type === 'text') {
+        input.type = 'password';
+        button.textContent = '👁';
+        if (input.dataset.revealedKey === input.value) {
+          input.value = '';
+          delete input.dataset.revealedKey;
+        }
+        return;
+      }
+
+      try {
+        if (!input.value) {
+          const configuredKey = await getConfiguredProviderKey(providerKey);
+          if (!configuredKey) return;
+          input.value = configuredKey;
+          input.dataset.revealedKey = configuredKey;
+        }
+        input.type = 'text';
+        button.textContent = '🙈';
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    async function copyText(value) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(value);
+        return;
+      }
+
+      const textarea = document.createElement('textarea');
+      textarea.value = value;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const copied = document.execCommand('copy');
+      textarea.remove();
+      if (!copied) throw new Error('Clipboard copy failed.');
+    }
+
+    async function copyProviderKey(providerKey, button) {
+      const originalText = button.textContent;
+      try {
+        const input = document.getElementById(`key-${providerKey}`);
+        const key = input && input.value ? input.value.trim() : await getConfiguredProviderKey(providerKey);
+        if (!key) throw new Error('No configured key was found.');
+        await copyText(key);
+        button.textContent = 'Copied';
+      } catch (err) {
+        console.error(err);
+        button.textContent = 'Failed';
+      } finally {
+        setTimeout(() => { button.textContent = originalText; }, 1500);
+      }
     }
 
     async function deleteProviderKey(key) {
