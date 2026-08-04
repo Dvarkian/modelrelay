@@ -18,6 +18,7 @@ import {
   buildModelGroups,
   filterModelsByRequested,
   isRetryableProxyStatus,
+  computeFailedRefreshRetryAt,
   parseArgs,
   parseOpenRouterKeyRateLimit,
   selectNextApiKeyFromPool,
@@ -1610,6 +1611,34 @@ describe('isRetryableProxyStatus', () => {
     assert.equal(isRetryableProxyStatus(400), false)
     assert.equal(isRetryableProxyStatus(404), false)
     assert.equal(isRetryableProxyStatus('not-a-status'), false)
+  })
+})
+
+describe('computeFailedRefreshRetryAt', () => {
+  it('allows a retry after retryBackoffMs instead of the full refresh TTL', () => {
+    const now = 1_000_000_000
+    const refreshIntervalMs = 60 * 60_000 // 1 hour, e.g. OpenCode Zen's TTL
+    const retryBackoffMs = 2 * 60_000 // 2 minutes
+    const stampedAt = computeFailedRefreshRetryAt(now, refreshIntervalMs, retryBackoffMs)
+
+    // Immediately after the failure, the TTL guard (`now - stampedAt < refreshIntervalMs`)
+    // must still say "not yet" -- otherwise every failure would retry on every ping cycle.
+    assert.equal((now - stampedAt) < refreshIntervalMs, true)
+    assert.ok((now - stampedAt) >= refreshIntervalMs - retryBackoffMs)
+
+    // retryBackoffMs later, the TTL guard must allow a retry.
+    const afterBackoff = now + retryBackoffMs
+    assert.equal((afterBackoff - stampedAt) >= refreshIntervalMs, true)
+
+    // Just before retryBackoffMs elapses, it must still be blocked.
+    const justBefore = now + retryBackoffMs - 1
+    assert.equal((justBefore - stampedAt) >= refreshIntervalMs, false)
+  })
+
+  it('never returns a timestamp in the future relative to a fresh success stamp', () => {
+    const now = Date.now()
+    const stampedAt = computeFailedRefreshRetryAt(now, 30 * 60_000, 2 * 60_000)
+    assert.ok(stampedAt < now)
   })
 })
 
