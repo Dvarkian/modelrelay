@@ -19,6 +19,7 @@ import {
   filterModelsByRequested,
   isRetryableProxyStatus,
   computeFailedRefreshRetryAt,
+  parseContextSize,
   parseArgs,
   parseOpenRouterKeyRateLimit,
   selectNextApiKeyFromPool,
@@ -987,6 +988,75 @@ describe('user-defined model tags', () => {
     assert.deepEqual(filterModelsByRequested(results, 'tag:'), [])
   })
 
+  it('filters tag requests by a min_ctx modifier', () => {
+    const results = [
+      mockResult({ modelId: 'small', tags: ['general'], ctx: '8k' }),
+      mockResult({ modelId: 'medium', tags: ['general'], ctx: '32k' }),
+      mockResult({ modelId: 'large', tags: ['general'], ctx: '1m' }),
+      mockResult({ modelId: 'no-ctx', tags: ['general'], ctx: null }),
+      mockResult({ modelId: 'wrong-tag', tags: ['coding'], ctx: '1m' }),
+    ]
+
+    assert.deepEqual(
+      filterModelsByRequested(results, 'tag:general+min_ctx:32000').map(m => m.modelId),
+      ['medium', 'large'],
+    )
+    // Exact boundary: a 32k model satisfies a 32000-token floor.
+    assert.deepEqual(
+      filterModelsByRequested(results, 'tag:general+min_ctx:32001').map(m => m.modelId),
+      ['large'],
+    )
+    // Shorthand k/m suffixes on the modifier value itself.
+    assert.deepEqual(
+      filterModelsByRequested(results, 'tag:general+min_ctx:1m').map(m => m.modelId),
+      ['large'],
+    )
+    // No modifier -- unchanged plain tag behavior, unparseable/missing ctx included.
+    assert.deepEqual(
+      filterModelsByRequested(results, 'tag:general').map(m => m.modelId),
+      ['small', 'medium', 'large', 'no-ctx'],
+    )
+  })
+
+  it('ignores unknown or malformed tag modifiers instead of rejecting the request', () => {
+    const results = [mockResult({ modelId: 'one', tags: ['general'], ctx: '128k' })]
+    assert.deepEqual(
+      filterModelsByRequested(results, 'tag:general+unknown_modifier:whatever').map(m => m.modelId),
+      ['one'],
+    )
+    assert.deepEqual(
+      filterModelsByRequested(results, 'tag:general+min_ctx:not-a-number').map(m => m.modelId),
+      ['one'],
+    )
+    assert.deepEqual(
+      filterModelsByRequested(results, 'tag:general+').map(m => m.modelId),
+      ['one'],
+    )
+  })
+
+  it('filters auto-fastest by min_ctx regardless of capability tags (issue #42)', () => {
+    const results = [
+      mockResult({ modelId: 'small', tags: ['general'], ctx: '8k' }),
+      mockResult({ modelId: 'medium', tags: ['coding'], ctx: '128k' }),
+      mockResult({ modelId: 'large', ctx: '1m' }), // no tags at all -- still eligible
+    ]
+
+    assert.deepEqual(
+      filterModelsByRequested(results, 'auto-fastest+min_ctx:128k').map(m => m.modelId),
+      ['medium', 'large'],
+    )
+    // Plain auto-fastest is untouched -- still returns everything, unfiltered.
+    assert.deepEqual(
+      filterModelsByRequested(results, 'auto-fastest').map(m => m.modelId),
+      ['small', 'medium', 'large'],
+    )
+    // A malformed/unknown modifier falls back to plain auto-fastest behavior.
+    assert.deepEqual(
+      filterModelsByRequested(results, 'auto-fastest+bogus:xyz').map(m => m.modelId),
+      ['small', 'medium', 'large'],
+    )
+  })
+
   it('normalizes persisted model tags safely', () => {
     const normalized = normalizeConfigShape({
       modelTags: {
@@ -1639,6 +1709,30 @@ describe('computeFailedRefreshRetryAt', () => {
     const now = Date.now()
     const stampedAt = computeFailedRefreshRetryAt(now, 30 * 60_000, 2 * 60_000)
     assert.ok(stampedAt < now)
+  })
+})
+
+describe('parseContextSize', () => {
+  it('parses k and m suffixes into raw token counts', () => {
+    assert.equal(parseContextSize('128k'), 128_000)
+    assert.equal(parseContextSize('1m'), 1_000_000)
+    assert.equal(parseContextSize('1M'), 1_000_000)
+    assert.equal(parseContextSize('10M'), 10_000_000)
+    assert.equal(parseContextSize('0.5m'), 500_000)
+  })
+
+  it('parses plain numbers, string or numeric', () => {
+    assert.equal(parseContextSize('32000'), 32_000)
+    assert.equal(parseContextSize(32000), 32_000)
+  })
+
+  it('returns null for unparseable, empty, or negative input', () => {
+    assert.equal(parseContextSize(null), null)
+    assert.equal(parseContextSize(undefined), null)
+    assert.equal(parseContextSize(''), null)
+    assert.equal(parseContextSize('—'), null)
+    assert.equal(parseContextSize('not-a-number'), null)
+    assert.equal(parseContextSize(-5), null)
   })
 })
 

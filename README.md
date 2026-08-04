@@ -179,6 +179,7 @@ modelrelay config export | modelrelay config import
 - Use a grouped model ID such as `minimax-m2.5`, `kimi-k2.5`, or `glm4.7` to route within that model group
 - For grouped IDs, modelrelay selects the provider with the best current QoS for that group
 - Use `model: "tag:<name>"` (e.g. `tag:coding`) to route to the best currently available model carrying that tag — either a curated capability tag or a custom tag you've assigned in the Web UI (see [Model tags](#model-tags)). This is useful because the free models behind modelrelay come and go as availability changes — routing by tag survives a given model disappearing, where routing by a specific model/group ID does not.
+- Append `+min_ctx:<size>` to `tag:<name>` or `auto-fastest` to additionally require a minimum context window, e.g. `tag:general+min_ctx:32000` or `auto-fastest+min_ctx:128k`. `<size>` accepts a raw token count or a `k`/`m` suffix. Models whose context window can't be determined, or is smaller than the requirement, are excluded. See [Model tags](#model-tags).
 - In the Web UI, pinned models can now use either `Canonical Group` mode (default, pins the same model across providers) or `Exact Provider Row` mode from `Settings`
 - Streaming and non-streaming requests are both supported
 
@@ -214,6 +215,16 @@ Every model carries one or more capability tags, combined from two sources:
 - **Custom tags** are freeform labels you assign yourself. In the Web UI, open a model row and edit **Custom Routing Tags**. Assignments are keyed to the canonical model, shared across its providers, and stored in `~/.modelrelay.json`.
 
 Use `model: "tag:<name>"` in `/v1/chat/completions` to route to the best currently available model carrying that tag — curated or custom — instead of naming a specific model. For example, assign `coding` to a few models in the UI, then request `model: "tag:coding"`; normal QoS ranking, availability filtering, and retry behavior choose the best currently eligible tagged model.
+
+#### Minimum context window (`min_ctx`)
+
+Tag membership alone doesn't guarantee a model can fit your prompt — a tag can span models with very different context windows. Append `+min_ctx:<size>` to filter those out before QoS ranking runs:
+
+- `tag:general+min_ctx:32000` — best available `general`-tagged model with at least 32,000 tokens of context
+- `tag:coding+min_ctx:128k` — same, for `coding`, using the `k` shorthand
+- `auto-fastest+min_ctx:1m` — fastest model overall with at least 1,000,000 tokens of context, no tag restriction
+
+`<size>` accepts a plain token count (`32000`) or a `k`/`m` suffix (`32k`, `1m`). Models with no known context window, or a smaller one than requested, are excluded from consideration. An unparseable or unrecognized modifier is ignored, falling back to the unmodified `tag:<name>` or `auto-fastest` behavior rather than erroring.
 
 ## Config
 
