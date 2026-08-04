@@ -177,9 +177,8 @@ modelrelay config export | modelrelay config import
 
 - Use `model: "auto-fastest"` to route to the best model overall
 - Use a grouped model ID such as `minimax-m2.5`, `kimi-k2.5`, or `glm4.7` to route within that model group
-- Use `model: "tag:<name>"` to route to the best available model carrying a user-defined tag
 - For grouped IDs, modelrelay selects the provider with the best current QoS for that group
-- Use `model: "tag:<name>"` (e.g. `tag:coding`) to route to the best currently available model carrying that capability tag, regardless of which specific model that turns out to be. This is useful because the free models behind modelrelay come and go as availability changes — routing by tag survives a given model disappearing, where routing by a specific model/group ID does not.
+- Use `model: "tag:<name>"` (e.g. `tag:coding`) to route to the best currently available model carrying that tag — either a curated capability tag or a custom tag you've assigned in the Web UI (see [Model tags](#model-tags)). This is useful because the free models behind modelrelay come and go as availability changes — routing by tag survives a given model disappearing, where routing by a specific model/group ID does not.
 - In the Web UI, pinned models can now use either `Canonical Group` mode (default, pins the same model across providers) or `Exact Provider Row` mode from `Settings`
 - Streaming and non-streaming requests are both supported
 
@@ -191,10 +190,7 @@ modelrelay config export | modelrelay config import
 - Each grouped ID can represent the same model across multiple providers
 - When you select one of these IDs in `/v1/chat/completions`, modelrelay routes the request to the provider with the best current QoS for that model group
 - `auto-fastest` is also exposed and routes to the best model overall
-- Each entry includes a `tags` array combining curated capability tags with any user-defined tags.
-- Add custom tags in the Web UI by opening a model row and editing **Custom Routing Tags**. Assignments are shared across providers for the canonical model and stored in `~/.modelrelay.json`.
-
-For example, assign `coding` to several models in the UI, then request `model: "tag:coding"`. Normal QoS ranking, availability filtering, and retry behavior choose the best currently eligible tagged model.
+- Each entry includes a `tags` array combining curated capability tags with any user-defined tags (see [Model tags](#model-tags))
 
 Example:
 
@@ -212,9 +208,12 @@ Example:
 
 ### Model tags
 
-Every model is assigned one or more capability tags from a fixed vocabulary: `coding`, `reasoning`, `general`, `fast`, `agentic`. Tags are curated by maintainers (see `tags.js`) rather than freeform, so `tag:<name>` routing always resolves to a known, checkable capability.
+Every model carries one or more capability tags, combined from two sources:
 
-Use `model: "tag:<name>"` in `/v1/chat/completions` to route to the best currently available model with that tag, instead of naming a specific model. This is the recommended way to request "a good coding model" or "a fast model" without hardcoding a model ID that might stop being served.
+- **Curated tags** come from a fixed vocabulary — `coding`, `reasoning`, `general`, `fast`, `agentic` — maintained by project maintainers in `tags.js`.
+- **Custom tags** are freeform labels you assign yourself. In the Web UI, open a model row and edit **Custom Routing Tags**. Assignments are keyed to the canonical model, shared across its providers, and stored in `~/.modelrelay.json`.
+
+Use `model: "tag:<name>"` in `/v1/chat/completions` to route to the best currently available model carrying that tag — curated or custom — instead of naming a specific model. For example, assign `coding` to a few models in the UI, then request `model: "tag:coding"`; normal QoS ranking, availability filtering, and retry behavior choose the best currently eligible tagged model.
 
 ## Config
 
