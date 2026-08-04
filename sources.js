@@ -20,6 +20,7 @@ export const MODEL_ID_ALIASES = {
   'gemma3:12b': 'gemma-3-12b-it',
   'gemma3:27b': 'gemma-3-27b-it',
   'glm-4.7': 'z-ai/glm4.7',
+  'zai-glm-4.7': 'z-ai/glm4.7',
   'glm-4.6': 'glm-4.6',
   'glm-5': 'z-ai/glm5',
   'glm-5.2': 'z-ai/glm-5.2',
@@ -214,6 +215,7 @@ export const sources = {
   "nvidia": {
     "name": "NIM",
     "url": "https://integrate.api.nvidia.com/v1/chat/completions",
+    "discoverable": true,
     "models": [
       ["z-ai/glm-5.2", "GLM 5.2", "200k"],
       ["moonshotai/kimi-k2.7-code", "Kimi K2.7 Code", "262k"],
@@ -269,6 +271,7 @@ export const sources = {
   "groq": {
     "name": "Groq",
     "url": "https://api.groq.com/openai/v1/chat/completions",
+    "discoverable": true,
     "models": [
       ["llama-3.3-70b-versatile", "Llama 3.3 70B", "128k"],
       ["meta-llama/llama-4-scout-17b-16e-preview", "Llama 4 Scout", "10M"],
@@ -285,14 +288,12 @@ export const sources = {
   "cerebras": {
     "name": "Cerebras",
     "url": "https://api.cerebras.ai/v1/chat/completions",
+    "discoverable": true,
     "models": [
-      ["llama3.3-70b", "Llama 3.3 70B", "128k"],
-      ["llama-4-scout-17b-16e-instruct", "Llama 4 Scout", "10M"],
-      ["qwen-3-32b", "Qwen3 32B", "128k"],
-      ["gpt-oss-120b", "GPT OSS 120B", "128k"],
-      ["qwen-3-235b-a22b", "Qwen3 235B", "128k"],
+      ["zai-glm-4.7", "GLM 4.7", "128k"],
       ["llama3.1-8b", "Llama 3.1 8B", "128k"],
-      ["glm-4.6", "GLM 4.6", "128k"]
+      ["qwen-3-235b-a22b-instruct-2507", "Qwen3 235B", "128k"],
+      ["gpt-oss-120b", "GPT OSS 120B", "128k"]
     ]
   },
   "opencode": {
@@ -339,6 +340,7 @@ export const sources = {
   "scaleway": {
     "name": "Scaleway",
     "url": "https://api.scaleway.ai/v1/chat/completions",
+    "discoverable": true,
     "models": [
       ["devstral-2-123b-instruct-2512", "Devstral 2 123B", "256k"],
       ["qwen3-235b-a22b-instruct-2507", "Qwen3 235B", "128k"],
@@ -367,6 +369,7 @@ export const sources = {
   "googleai": {
     "name": "Google AI",
     "url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+    "discoverable": true,
     "models": [
       ["gemma-3-27b-it", "Gemma 3 27B", "128k"],
       ["gemma-3-12b-it", "Gemma 3 12B", "128k"],

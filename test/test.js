@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
 
 import { sources, MODELS, canonicalizeModelId, getPreferredModelContext, getPreferredModelLabel, getScore, resolveAliasedModelId } from '../sources.js'
+import { TAG_VOCABULARY, MODEL_TAGS, getModelTags as getBuiltInModelTags } from '../tags.js'
 import {
   getAvg,
   getVerdict,
@@ -25,7 +26,7 @@ import {
 import { buildOpenClawProviderConfig } from '../lib/onboard.js'
 import { normalizeMissingScoreId } from '../lib/score-fetcher.js'
 import { buildOpenRouterQualityIndex, fitLinearRegression, qualityLookupKeys, resolveModelQuality } from '../lib/model-quality.js'
-import { getConfiguredTagNames, getModelTagKey, getModelTags, normalizeTag, normalizeTags, setModelTags } from '../lib/tags.js'
+import { getConfiguredTagNames, getModelTagKey, getModelTags as getUserModelTags, normalizeTag, normalizeTags, setModelTags } from '../lib/tags.js'
 import { resolveAutostartExecPath, resolveAutostartNodePath } from '../lib/autostart.js'
 import { exportConfigToken, getApiKey, getApiKeyPool, getMaxTurns, getPinningMode, getProviderBaseUrl, getProviderModelId, getProviderPingIntervalMs, hasMultipleKeys, importConfigToken, normalizeConfigShape, isOpenAICompatibleInstanceKey, getBaseProviderKey, getOpenAICompatibleInstanceId, buildOpenAICompatibleInstanceKey, listOpenAICompatibleEndpoints, upsertOpenAICompatibleEndpoint, removeOpenAICompatibleEndpoint } from '../lib/config.js'
 import { buildNpmInstallInvocation, buildWindowsPostUpdateRestartCommand, getForcedUpdateVersion, getLocalUpdateTarballPath, getLocalUpdateVersion, isRunningFromSource, shouldStopAutostartBeforeUpdate } from '../lib/update.js'
@@ -202,6 +203,10 @@ describe('sources data integrity', () => {
     assert.ok(Array.isArray(sources.kiro.models))
   })
 
+  it('does not enable discovery for Codestral because its API has no models endpoint', () => {
+    assert.equal(sources.codestral.discoverable, undefined)
+  })
+
   it('has expected provider structure', () => {
     for (const [providerKey, provider] of Object.entries(sources)) {
       assert.equal(typeof providerKey, 'string')
@@ -244,6 +249,40 @@ describe('sources data integrity', () => {
       const key = `${providerKey}/${modelId}`
       assert.equal(seen.has(key), false, `Duplicate model key found: ${key}`)
       seen.add(key)
+    }
+  })
+})
+
+describe('tags data integrity', () => {
+  const knownModelIds = new Set(MODELS.map(([modelId]) => modelId))
+
+  it('has no duplicate entries in TAG_VOCABULARY', () => {
+    assert.equal(TAG_VOCABULARY.length, new Set(TAG_VOCABULARY).size)
+  })
+
+  it('only assigns tags that are in TAG_VOCABULARY', () => {
+    for (const [modelId, tags] of Object.entries(MODEL_TAGS)) {
+      for (const tag of tags) {
+        assert.ok(TAG_VOCABULARY.includes(tag), `Unknown tag "${tag}" on ${modelId}`)
+      }
+    }
+  })
+
+  it('does not assign duplicate tags to the same model', () => {
+    for (const [modelId, tags] of Object.entries(MODEL_TAGS)) {
+      assert.equal(tags.length, new Set(tags).size, `Duplicate tag on ${modelId}`)
+    }
+  })
+
+  it('only keys MODEL_TAGS by model IDs that exist in sources.js', () => {
+    for (const modelId of Object.keys(MODEL_TAGS)) {
+      assert.ok(knownModelIds.has(modelId), `MODEL_TAGS has a stale key: ${modelId}`)
+    }
+  })
+
+  it('assigns at least one tag to every model in sources.js', () => {
+    for (const modelId of knownModelIds) {
+      assert.ok(getBuiltInModelTags(modelId).length > 0, `No tags assigned to ${modelId}`)
     }
   })
 })
@@ -925,7 +964,7 @@ describe('user-defined model tags', () => {
     const config = {}
     const updated = setModelTags(config, 'minimax-m2.5-free', ['Coding', 'agentic'])
     assert.equal(updated.key, 'minimax/minimax-m2.5')
-    assert.deepEqual(getModelTags(config, 'minimax/minimax-m2.5:free'), ['coding', 'agentic'])
+    assert.deepEqual(getUserModelTags(config, 'minimax/minimax-m2.5:free'), ['coding', 'agentic'])
     assert.deepEqual(getConfiguredTagNames(config), ['agentic', 'coding'])
     assert.equal(getModelTagKey('minimax-m2.5-free'), 'minimax/minimax-m2.5')
   })
@@ -1561,6 +1600,11 @@ describe('isRetryableProxyStatus', () => {
     assert.equal(isRetryableProxyStatus(503), true)
   })
 
+  it('returns true for 410 (model retired/gone upstream)', () => {
+    assert.equal(isRetryableProxyStatus(410), true)
+    assert.equal(isRetryableProxyStatus('410'), true)
+  })
+
   it('returns false for non-retryable statuses', () => {
     assert.equal(isRetryableProxyStatus(200), false)
     assert.equal(isRetryableProxyStatus(400), false)
@@ -1984,6 +2028,44 @@ describe('model grouping and filtering', () => {
     const filtered = filterModelsByRequested(duplicateResults, 'openai-compatible:remote/llama-3.1', canonicalizeModelId)
 
     assert.deepEqual(filtered.map(r => r.providerKey), ['openai-compatible:remote'])
+  })
+})
+
+describe('model tag routing', () => {
+  // moonshotai/kimi-k2.7-code -> ['coding'], qwen-qwq-32b -> ['reasoning'], z-ai/glm5 -> ['agentic', 'coding', 'general']
+  const taggedResults = [
+    mockResult({ modelId: 'moonshotai/kimi-k2.7-code', label: 'Kimi K2.7 Code' }),
+    mockResult({ modelId: 'qwen-qwq-32b', label: 'QwQ 32B' }),
+    mockResult({ modelId: 'z-ai/glm5', label: 'GLM 5' }),
+  ]
+
+  it('routes tag: requests to models carrying that tag', () => {
+    const filtered = filterModelsByRequested(taggedResults, 'tag:reasoning', canonicalizeModelId)
+    assert.deepEqual(filtered.map(r => r.modelId), ['qwen-qwq-32b'])
+  })
+
+  it('matches a model tagged with multiple tags under each of its tags', () => {
+    const codingMatches = filterModelsByRequested(taggedResults, 'tag:coding', canonicalizeModelId)
+    assert.ok(codingMatches.some(r => r.modelId === 'moonshotai/kimi-k2.7-code'))
+    assert.ok(codingMatches.some(r => r.modelId === 'z-ai/glm5'))
+
+    const agenticMatches = filterModelsByRequested(taggedResults, 'tag:agentic', canonicalizeModelId)
+    assert.deepEqual(agenticMatches.map(r => r.modelId), ['z-ai/glm5'])
+  })
+
+  it('is case-insensitive for tag names', () => {
+    const filtered = filterModelsByRequested(taggedResults, 'TAG:Reasoning', canonicalizeModelId)
+    assert.deepEqual(filtered.map(r => r.modelId), ['qwen-qwq-32b'])
+  })
+
+  it('returns no models for an unknown tag', () => {
+    const filtered = filterModelsByRequested(taggedResults, 'tag:nonexistent', canonicalizeModelId)
+    assert.equal(filtered.length, 0)
+  })
+
+  it('returns no models when no result carries the requested tag', () => {
+    const filtered = filterModelsByRequested([mockResult({ modelId: 'moonshotai/kimi-k2.7-code' })], 'tag:reasoning', canonicalizeModelId)
+    assert.equal(filtered.length, 0)
   })
 })
 
@@ -2448,6 +2530,7 @@ describe('OpenAI-compatible model discovery', () => {
     assert.equal(buildOpenAICompatibleModelsListUrl('https://api.example.com/v1/'), 'https://api.example.com/v1/models')
     assert.equal(buildOpenAICompatibleModelsListUrl('https://api.example.com/v1/chat/completions'), 'https://api.example.com/v1/models')
     assert.equal(buildOpenAICompatibleModelsListUrl('https://api.example.com/v1/models'), 'https://api.example.com/v1/models')
+    assert.equal(buildOpenAICompatibleModelsListUrl('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'), 'https://generativelanguage.googleapis.com/v1beta/openai/models')
     assert.equal(buildOpenAICompatibleModelsListUrl('api.example.com/v1'), 'https://api.example.com/v1/models')
     assert.equal(buildOpenAICompatibleModelsListUrl(''), null)
     assert.equal(buildOpenAICompatibleModelsListUrl(null), null)
@@ -2488,5 +2571,11 @@ describe('OpenAI-compatible model discovery', () => {
     assert.equal(toOpenAICompatibleDiscoveredModelMeta({}, 'openai-compatible:x'), null)
     assert.equal(toOpenAICompatibleDiscoveredModelMeta({ id: '   ' }, 'openai-compatible:x'), null)
     assert.equal(toOpenAICompatibleDiscoveredModelMeta('', 'openai-compatible:x'), null)
+  })
+
+  it('filters non-chat models from discovered provider catalogs', () => {
+    assert.equal(toOpenAICompatibleDiscoveredModelMeta({ id: 'nvidia/nemotron-content-safety' }, 'nvidia'), null)
+    assert.equal(toOpenAICompatibleDiscoveredModelMeta({ id: 'text-embedding-3-large' }, 'nvidia'), null)
+    assert.ok(toOpenAICompatibleDiscoveredModelMeta({ id: 'qwen/qwen3-coder' }, 'nvidia'))
   })
 })

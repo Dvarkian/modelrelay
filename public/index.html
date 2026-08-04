@@ -5314,14 +5314,17 @@
         <div class="tag-workbench">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
             <div>
-              <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Routing Tags</div>
+              <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Custom Routing Tags</div>
               <div style="font-size:0.72rem;color:var(--text-muted);margin-top:4px;">Use <code>tag:name</code> as the model ID to route across matching models.</div>
             </div>
             <span style="font-size:0.68rem;color:var(--text-muted);white-space:nowrap;">shared across providers</span>
           </div>
-          <div class="model-tag-row" style="margin-top:12px;">${renderModelTagChips(m.tags, true)}</div>
+          <div style="font-size:0.68rem;color:var(--text-muted);margin-top:12px;">Built in</div>
+          <div class="model-tag-row" style="margin-top:6px;">${renderModelTagChips(m.builtInTags)}</div>
+          <div style="font-size:0.68rem;color:var(--text-muted);margin-top:12px;">Your tags</div>
+          <div class="model-tag-row" style="margin-top:6px;">${renderModelTagChips(m.userTags, true)}</div>
           <div class="tag-input-row">
-            <input id="model-tags-input" value="${escapeHtml((m.tags || []).join(', ')).replace(/"/g, '&quot;')}" placeholder="coding, fast, private" onkeydown="if(event.key === 'Enter'){ event.preventDefault(); saveModelTags(); }">
+            <input id="model-tags-input" value="${escapeHtml((m.userTags || []).join(', ')).replace(/"/g, '&quot;')}" placeholder="private, local, favorite" onkeydown="if(event.key === 'Enter'){ event.preventDefault(); saveModelTags(); }">
             <button class="btn" onclick="saveModelTags()">Save tags</button>
           </div>
           <div id="model-tags-status" style="min-height:16px;margin-top:7px;font-size:0.7rem;color:var(--text-muted);"></div>
