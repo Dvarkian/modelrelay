@@ -226,6 +226,8 @@ Tag membership alone doesn't guarantee a model can fit your prompt — a tag can
 
 `<size>` accepts a plain token count (`32000`) or a `k`/`m` suffix (`32k`, `1m`). Models with no known context window, or a smaller one than requested, are excluded from consideration. An unparseable or unrecognized modifier is ignored, falling back to the unmodified `tag:<name>` or `auto-fastest` behavior rather than erroring.
 
+Modelrelay uses context data reported by the selected provider when it is available. Otherwise, it uses a provider-specific curated value from `sources.js`. It does not copy a context size between providers. It also keeps the context unknown when neither source has a value. For Ollama, the allocated or configured context is usable for this filter. The model maximum alone is not sufficient.
+
 ## Config
 
 - Router config file: `~/.modelrelay.json`

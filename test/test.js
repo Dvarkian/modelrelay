@@ -230,13 +230,15 @@ describe('sources data integrity', () => {
     }
   })
 
-  it('flat MODELS tuples have 5 fields', () => {
+  it('flat MODELS tuples include context provenance', () => {
     for (const model of MODELS) {
       assert.ok(Array.isArray(model))
-      assert.equal(model.length, 5)
+      assert.equal(model.length, 7)
       assert.equal(typeof model[0], 'string')
       assert.equal(typeof model[1], 'string')
       assert.equal(typeof model[4], 'string')
+      assert.equal(model[5], 'curated')
+      assert.equal(typeof model[6], 'string')
     }
   })
 
@@ -993,6 +995,7 @@ describe('user-defined model tags', () => {
       mockResult({ modelId: 'small', tags: ['general'], ctx: '8k' }),
       mockResult({ modelId: 'medium', tags: ['general'], ctx: '32k' }),
       mockResult({ modelId: 'large', tags: ['general'], ctx: '1m' }),
+      mockResult({ modelId: 'maximum-only', tags: ['general'], ctx: '1m', ctxSource: 'model-maximum' }),
       mockResult({ modelId: 'no-ctx', tags: ['general'], ctx: null }),
       mockResult({ modelId: 'wrong-tag', tags: ['coding'], ctx: '1m' }),
     ]
@@ -1014,7 +1017,7 @@ describe('user-defined model tags', () => {
     // No modifier -- unchanged plain tag behavior, unparseable/missing ctx included.
     assert.deepEqual(
       filterModelsByRequested(results, 'tag:general').map(m => m.modelId),
-      ['small', 'medium', 'large', 'no-ctx'],
+      ['small', 'medium', 'large', 'maximum-only', 'no-ctx'],
     )
   })
 
@@ -1256,7 +1259,7 @@ describe('dynamic model score resolution', () => {
     assert.equal(model.isEstimatedScore, false)
   })
 
-  it('uses researched Kimi K2.6 score and context for Ollama discovery', () => {
+  it('does not apply another provider context to Ollama discovery', () => {
     const model = toOllamaModelMeta({
       name: 'kimi-k2.6',
       model: 'kimi-k2.6',
@@ -1266,7 +1269,31 @@ describe('dynamic model score resolution', () => {
     assert.equal(model.label, 'Kimi K2.6')
     assert.equal(model.intell, 0.802)
     assert.equal(model.isEstimatedScore, false)
-    assert.equal(model.ctx, '262k')
+    assert.equal(model.ctx, null)
+    assert.equal(model.ctxSource, null)
+  })
+
+  it('uses the allocated Ollama context before the model maximum', () => {
+    const model = toOllamaModelMeta({
+      name: 'gemma3',
+      model: 'gemma3',
+      _running: { context_length: 4096 },
+      _show: { model_info: { 'gemma3.context_length': 131072 } },
+    })
+
+    assert.equal(model.ctx, '4096')
+    assert.equal(model.ctxSource, 'runtime-allocated')
+  })
+
+  it('labels an unallocated Ollama model limit as a model maximum', () => {
+    const model = toOllamaModelMeta({
+      name: 'gemma3',
+      model: 'gemma3',
+      _show: { model_info: { 'gemma3.context_length': 131072 } },
+    })
+
+    assert.equal(model.ctx, '131072')
+    assert.equal(model.ctxSource, 'model-maximum')
   })
 
   it('keeps MiniMax M-series SWE scores monotonic as versions increase', () => {
@@ -1430,7 +1457,7 @@ describe('dynamic model score resolution', () => {
     assert.equal(model.isEstimatedScore, false)
   })
 
-  it('normalizes Ling 2.6 Flash free aliases and keeps provider context metadata', () => {
+  it('does not copy Ling 2.6 context metadata between providers', () => {
     assert.equal(resolveAliasedModelId('ling-2.6-flash-free'), 'inclusionai/ling-2.6-flash')
     assert.equal(resolveAliasedModelId('inclusionai/ling-2.6-flash:free'), 'inclusionai/ling-2.6-flash')
     assert.equal(getScore('ling-2.6-flash-free'), 0.771)
@@ -1441,7 +1468,8 @@ describe('dynamic model score resolution', () => {
 
     assert.ok(model)
     assert.equal(model.label, 'Ling 2.6 Flash')
-    assert.equal(model.ctx, '262k')
+    assert.equal(model.ctx, null)
+    assert.equal(model.ctxSource, null)
     assert.equal(model.intell, 0.771)
     assert.equal(model.isEstimatedScore, false)
 
@@ -1453,6 +1481,8 @@ describe('dynamic model score resolution', () => {
 
     assert.ok(openRouterModel)
     assert.equal(openRouterModel.intell, 0.771)
+    assert.equal(openRouterModel.ctx, '262144')
+    assert.equal(openRouterModel.ctxSource, 'provider-reported')
     assert.equal(openRouterModel.isEstimatedScore, false)
   })
 
@@ -1733,6 +1763,11 @@ describe('parseContextSize', () => {
     assert.equal(parseContextSize('—'), null)
     assert.equal(parseContextSize('not-a-number'), null)
     assert.equal(parseContextSize(-5), null)
+    assert.equal(parseContextSize('-5'), null)
+    assert.equal(parseContextSize('-5k'), null)
+    assert.equal(parseContextSize('128garbage'), null)
+    assert.equal(parseContextSize('1.2.3m'), null)
+    assert.equal(parseContextSize(0), null)
   })
 })
 
@@ -2268,6 +2303,12 @@ describe('package and entrypoint sanity', () => {
     assert.ok(dashboardContent.includes('Use <code>tag:name</code>'))
   })
 
+  it('formats exact context sizes for display without changing routing data', () => {
+    assert.match(dashboardContent, /function formatContextDisplay\(value\)/)
+    assert.match(dashboardContent, /Math\.round\(tokens \/ 1_000\).*K/)
+    assert.match(dashboardContent, /formatContextDisplay\(m\.ctx\)/)
+  })
+
   it('includes working provider key reveal and copy controls', () => {
     assert.ok(dashboardContent.includes('toggleProviderKeyVisibility'))
     assert.ok(dashboardContent.includes('getConfiguredProviderKey'))
@@ -2684,8 +2725,8 @@ describe('OpenAI-compatible model discovery', () => {
     assert.equal(meta.label, 'Qwen2.5 Coder 7B')
     assert.equal(meta.providerKey, 'openai-compatible:my-vllm')
     assert.equal(meta.providerUrl, 'https://host/v1/chat/completions')
-    // 32768 → "33k" via the shared parser
-    assert.equal(meta.ctx, '33k')
+    assert.equal(meta.ctx, '32768')
+    assert.equal(meta.ctxSource, 'provider-reported')
   })
 
   it('falls back to a synthesized label when the record has none', () => {

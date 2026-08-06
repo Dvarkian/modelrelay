@@ -28,7 +28,8 @@ describe('OpenRouter model discovery', () => {
     assert.ok(freeMeta)
     assert.equal(freeMeta.modelId, 'google/gemma-7b-it:free')
     assert.equal(freeMeta.label, 'Gemma 7B IT')
-    assert.equal(freeMeta.ctx, '8k')
+    assert.equal(freeMeta.ctx, '8192')
+    assert.equal(freeMeta.ctxSource, 'provider-reported')
     assert.equal(freeMeta.providerKey, 'openrouter')
 
     const paidMeta = toOpenRouterModelMeta(paidRecord)
@@ -51,6 +52,7 @@ describe('OpenRouter model discovery', () => {
 
   it('handles missing or malformed fields in records', () => {
     assert.equal(toOpenRouterModelMeta({ id: 'only-id:free' }).label, 'only-id:free')
-    assert.equal(toOpenRouterModelMeta({ id: 'only-id:free' }).ctx, '128k') // default
+    assert.equal(toOpenRouterModelMeta({ id: 'only-id:free' }).ctx, null)
+    assert.equal(toOpenRouterModelMeta({ id: 'only-id:free' }).ctxSource, null)
   })
 })
