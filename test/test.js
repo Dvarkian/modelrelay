@@ -19,6 +19,7 @@ import {
   filterModelsByRequested,
   isRetryableProxyStatus,
   computeFailedRefreshRetryAt,
+  parseContextSize,
   parseArgs,
   parseOpenRouterKeyRateLimit,
   selectNextApiKeyFromPool,
@@ -229,13 +230,15 @@ describe('sources data integrity', () => {
     }
   })
 
-  it('flat MODELS tuples have 5 fields', () => {
+  it('flat MODELS tuples include context provenance', () => {
     for (const model of MODELS) {
       assert.ok(Array.isArray(model))
-      assert.equal(model.length, 5)
+      assert.equal(model.length, 7)
       assert.equal(typeof model[0], 'string')
       assert.equal(typeof model[1], 'string')
       assert.equal(typeof model[4], 'string')
+      assert.equal(model[5], 'curated')
+      assert.equal(typeof model[6], 'string')
     }
   })
 
@@ -987,6 +990,76 @@ describe('user-defined model tags', () => {
     assert.deepEqual(filterModelsByRequested(results, 'tag:'), [])
   })
 
+  it('filters tag requests by a min_ctx modifier', () => {
+    const results = [
+      mockResult({ modelId: 'small', tags: ['general'], ctx: '8k' }),
+      mockResult({ modelId: 'medium', tags: ['general'], ctx: '32k' }),
+      mockResult({ modelId: 'large', tags: ['general'], ctx: '1m' }),
+      mockResult({ modelId: 'maximum-only', tags: ['general'], ctx: '1m', ctxSource: 'model-maximum' }),
+      mockResult({ modelId: 'no-ctx', tags: ['general'], ctx: null }),
+      mockResult({ modelId: 'wrong-tag', tags: ['coding'], ctx: '1m' }),
+    ]
+
+    assert.deepEqual(
+      filterModelsByRequested(results, 'tag:general+min_ctx:32000').map(m => m.modelId),
+      ['medium', 'large'],
+    )
+    // Exact boundary: a 32k model satisfies a 32000-token floor.
+    assert.deepEqual(
+      filterModelsByRequested(results, 'tag:general+min_ctx:32001').map(m => m.modelId),
+      ['large'],
+    )
+    // Shorthand k/m suffixes on the modifier value itself.
+    assert.deepEqual(
+      filterModelsByRequested(results, 'tag:general+min_ctx:1m').map(m => m.modelId),
+      ['large'],
+    )
+    // No modifier -- unchanged plain tag behavior, unparseable/missing ctx included.
+    assert.deepEqual(
+      filterModelsByRequested(results, 'tag:general').map(m => m.modelId),
+      ['small', 'medium', 'large', 'maximum-only', 'no-ctx'],
+    )
+  })
+
+  it('ignores unknown or malformed tag modifiers instead of rejecting the request', () => {
+    const results = [mockResult({ modelId: 'one', tags: ['general'], ctx: '128k' })]
+    assert.deepEqual(
+      filterModelsByRequested(results, 'tag:general+unknown_modifier:whatever').map(m => m.modelId),
+      ['one'],
+    )
+    assert.deepEqual(
+      filterModelsByRequested(results, 'tag:general+min_ctx:not-a-number').map(m => m.modelId),
+      ['one'],
+    )
+    assert.deepEqual(
+      filterModelsByRequested(results, 'tag:general+').map(m => m.modelId),
+      ['one'],
+    )
+  })
+
+  it('filters auto-fastest by min_ctx regardless of capability tags (issue #42)', () => {
+    const results = [
+      mockResult({ modelId: 'small', tags: ['general'], ctx: '8k' }),
+      mockResult({ modelId: 'medium', tags: ['coding'], ctx: '128k' }),
+      mockResult({ modelId: 'large', ctx: '1m' }), // no tags at all -- still eligible
+    ]
+
+    assert.deepEqual(
+      filterModelsByRequested(results, 'auto-fastest+min_ctx:128k').map(m => m.modelId),
+      ['medium', 'large'],
+    )
+    // Plain auto-fastest is untouched -- still returns everything, unfiltered.
+    assert.deepEqual(
+      filterModelsByRequested(results, 'auto-fastest').map(m => m.modelId),
+      ['small', 'medium', 'large'],
+    )
+    // A malformed/unknown modifier falls back to plain auto-fastest behavior.
+    assert.deepEqual(
+      filterModelsByRequested(results, 'auto-fastest+bogus:xyz').map(m => m.modelId),
+      ['small', 'medium', 'large'],
+    )
+  })
+
   it('normalizes persisted model tags safely', () => {
     const normalized = normalizeConfigShape({
       modelTags: {
@@ -1186,7 +1259,7 @@ describe('dynamic model score resolution', () => {
     assert.equal(model.isEstimatedScore, false)
   })
 
-  it('uses researched Kimi K2.6 score and context for Ollama discovery', () => {
+  it('does not apply another provider context to Ollama discovery', () => {
     const model = toOllamaModelMeta({
       name: 'kimi-k2.6',
       model: 'kimi-k2.6',
@@ -1196,7 +1269,31 @@ describe('dynamic model score resolution', () => {
     assert.equal(model.label, 'Kimi K2.6')
     assert.equal(model.intell, 0.802)
     assert.equal(model.isEstimatedScore, false)
-    assert.equal(model.ctx, '262k')
+    assert.equal(model.ctx, null)
+    assert.equal(model.ctxSource, null)
+  })
+
+  it('uses the allocated Ollama context before the model maximum', () => {
+    const model = toOllamaModelMeta({
+      name: 'gemma3',
+      model: 'gemma3',
+      _running: { context_length: 4096 },
+      _show: { model_info: { 'gemma3.context_length': 131072 } },
+    })
+
+    assert.equal(model.ctx, '4096')
+    assert.equal(model.ctxSource, 'runtime-allocated')
+  })
+
+  it('labels an unallocated Ollama model limit as a model maximum', () => {
+    const model = toOllamaModelMeta({
+      name: 'gemma3',
+      model: 'gemma3',
+      _show: { model_info: { 'gemma3.context_length': 131072 } },
+    })
+
+    assert.equal(model.ctx, '131072')
+    assert.equal(model.ctxSource, 'model-maximum')
   })
 
   it('keeps MiniMax M-series SWE scores monotonic as versions increase', () => {
@@ -1360,7 +1457,7 @@ describe('dynamic model score resolution', () => {
     assert.equal(model.isEstimatedScore, false)
   })
 
-  it('normalizes Ling 2.6 Flash free aliases and keeps provider context metadata', () => {
+  it('does not copy Ling 2.6 context metadata between providers', () => {
     assert.equal(resolveAliasedModelId('ling-2.6-flash-free'), 'inclusionai/ling-2.6-flash')
     assert.equal(resolveAliasedModelId('inclusionai/ling-2.6-flash:free'), 'inclusionai/ling-2.6-flash')
     assert.equal(getScore('ling-2.6-flash-free'), 0.771)
@@ -1371,7 +1468,8 @@ describe('dynamic model score resolution', () => {
 
     assert.ok(model)
     assert.equal(model.label, 'Ling 2.6 Flash')
-    assert.equal(model.ctx, '262k')
+    assert.equal(model.ctx, null)
+    assert.equal(model.ctxSource, null)
     assert.equal(model.intell, 0.771)
     assert.equal(model.isEstimatedScore, false)
 
@@ -1383,6 +1481,8 @@ describe('dynamic model score resolution', () => {
 
     assert.ok(openRouterModel)
     assert.equal(openRouterModel.intell, 0.771)
+    assert.equal(openRouterModel.ctx, '262144')
+    assert.equal(openRouterModel.ctxSource, 'provider-reported')
     assert.equal(openRouterModel.isEstimatedScore, false)
   })
 
@@ -1639,6 +1739,35 @@ describe('computeFailedRefreshRetryAt', () => {
     const now = Date.now()
     const stampedAt = computeFailedRefreshRetryAt(now, 30 * 60_000, 2 * 60_000)
     assert.ok(stampedAt < now)
+  })
+})
+
+describe('parseContextSize', () => {
+  it('parses k and m suffixes into raw token counts', () => {
+    assert.equal(parseContextSize('128k'), 128_000)
+    assert.equal(parseContextSize('1m'), 1_000_000)
+    assert.equal(parseContextSize('1M'), 1_000_000)
+    assert.equal(parseContextSize('10M'), 10_000_000)
+    assert.equal(parseContextSize('0.5m'), 500_000)
+  })
+
+  it('parses plain numbers, string or numeric', () => {
+    assert.equal(parseContextSize('32000'), 32_000)
+    assert.equal(parseContextSize(32000), 32_000)
+  })
+
+  it('returns null for unparseable, empty, or negative input', () => {
+    assert.equal(parseContextSize(null), null)
+    assert.equal(parseContextSize(undefined), null)
+    assert.equal(parseContextSize(''), null)
+    assert.equal(parseContextSize('—'), null)
+    assert.equal(parseContextSize('not-a-number'), null)
+    assert.equal(parseContextSize(-5), null)
+    assert.equal(parseContextSize('-5'), null)
+    assert.equal(parseContextSize('-5k'), null)
+    assert.equal(parseContextSize('128garbage'), null)
+    assert.equal(parseContextSize('1.2.3m'), null)
+    assert.equal(parseContextSize(0), null)
   })
 })
 
@@ -2174,6 +2303,12 @@ describe('package and entrypoint sanity', () => {
     assert.ok(dashboardContent.includes('Use <code>tag:name</code>'))
   })
 
+  it('formats exact context sizes for display without changing routing data', () => {
+    assert.match(dashboardContent, /function formatContextDisplay\(value\)/)
+    assert.match(dashboardContent, /Math\.round\(tokens \/ 1_000\).*K/)
+    assert.match(dashboardContent, /formatContextDisplay\(m\.ctx\)/)
+  })
+
   it('includes working provider key reveal and copy controls', () => {
     assert.ok(dashboardContent.includes('toggleProviderKeyVisibility'))
     assert.ok(dashboardContent.includes('getConfiguredProviderKey'))
@@ -2590,8 +2725,8 @@ describe('OpenAI-compatible model discovery', () => {
     assert.equal(meta.label, 'Qwen2.5 Coder 7B')
     assert.equal(meta.providerKey, 'openai-compatible:my-vllm')
     assert.equal(meta.providerUrl, 'https://host/v1/chat/completions')
-    // 32768 → "33k" via the shared parser
-    assert.equal(meta.ctx, '33k')
+    assert.equal(meta.ctx, '32768')
+    assert.equal(meta.ctxSource, 'provider-reported')
   })
 
   it('falls back to a synthesized label when the record has none', () => {

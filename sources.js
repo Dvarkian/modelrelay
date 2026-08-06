@@ -215,6 +215,7 @@ export const sources = {
   "nvidia": {
     "name": "NIM",
     "url": "https://integrate.api.nvidia.com/v1/chat/completions",
+    "contextUrl": "https://build.nvidia.com/models",
     "discoverable": true,
     "models": [
       ["z-ai/glm-5.2", "GLM 5.2", "200k"],
@@ -271,11 +272,12 @@ export const sources = {
   "groq": {
     "name": "Groq",
     "url": "https://api.groq.com/openai/v1/chat/completions",
+    "contextUrl": "https://console.groq.com/docs/models",
     "discoverable": true,
     "models": [
       ["llama-3.3-70b-versatile", "Llama 3.3 70B", "128k"],
-      ["meta-llama/llama-4-scout-17b-16e-preview", "Llama 4 Scout", "10M"],
-      ["meta-llama/llama-4-maverick-17b-128e-preview", "Llama 4 Maverick", "1M"],
+      ["meta-llama/llama-4-scout-17b-16e-preview", "Llama 4 Scout", "128k"],
+      ["meta-llama/llama-4-maverick-17b-128e-preview", "Llama 4 Maverick", "128k"],
       ["deepseek-r1-distill-llama-70b", "R1 Distill 70B", "128k"],
       ["qwen-qwq-32b", "QwQ 32B", "131k"],
       ["moonshotai/kimi-k2-instruct", "Kimi K2 Instruct", "131k"],
@@ -288,6 +290,7 @@ export const sources = {
   "cerebras": {
     "name": "Cerebras",
     "url": "https://api.cerebras.ai/v1/chat/completions",
+    "contextUrl": "https://api.cerebras.ai/public/v1/models?format=openrouter",
     "discoverable": true,
     "models": [
       ["zai-glm-4.7", "GLM 4.7", "128k"],
@@ -314,6 +317,7 @@ export const sources = {
   "openrouter": {
     "name": "OpenRouter",
     "url": "https://openrouter.ai/api/v1/chat/completions",
+    "contextUrl": "https://openrouter.ai/api/v1/models",
     "models": [
       ["qwen/qwen3-coder:free", "Qwen3 Coder", "256k"],
       ["xiaomi/mimo-v2-pro:free", "MiMo V2 Omni Pro", "1M"],
@@ -322,8 +326,8 @@ export const sources = {
       ["deepseek/deepseek-r1-0528:free", "DeepSeek R1 0528", "128k"],
       ["qwen/qwen3-next-80b-a3b-instruct:free", "Qwen3 80B Instruct", "128k"],
       ["openai/gpt-oss-120b:free", "GPT OSS 120B", "128k"],
-      ["openai/gpt-oss-20b:free", "GPT OSS 20B", "128k"],
-      ["nvidia/nemotron-3-nano-30b-a3b:free", "Nemotron Nano 30B", "128k"],
+      ["openai/gpt-oss-20b:free", "GPT OSS 20B", "131072"],
+      ["nvidia/nemotron-3-nano-30b-a3b:free", "Nemotron Nano 30B", "256k"],
       ["meta-llama/llama-3.3-70b-instruct:free", "Llama 3.3 70B", "128k"],
       ["minimax/minimax-m2.5:free", "MiniMax M2.5", "128k"],
       ["corethink:free", "CoreThink", "128k"],
@@ -333,6 +337,7 @@ export const sources = {
   "codestral": {
     "name": "Codestral",
     "url": "https://codestral.mistral.ai/v1/chat/completions",
+    "contextUrl": "https://docs.mistral.ai/getting-started/models/models_overview/",
     "models": [
       ["codestral-latest", "Codestral", "256k"]
     ]
@@ -340,20 +345,22 @@ export const sources = {
   "scaleway": {
     "name": "Scaleway",
     "url": "https://api.scaleway.ai/v1/chat/completions",
+    "contextUrl": "https://www.scaleway.com/en/docs/generative-apis/reference-content/supported-models/",
     "discoverable": true,
     "models": [
-      ["devstral-2-123b-instruct-2512", "Devstral 2 123B", "256k"],
-      ["qwen3-235b-a22b-instruct-2507", "Qwen3 235B", "128k"],
+      ["devstral-2-123b-instruct-2512", "Devstral 2 123B", "200k"],
+      ["qwen3-235b-a22b-instruct-2507", "Qwen3 235B", "250k"],
       ["gpt-oss-120b", "GPT OSS 120B", "128k"],
-      ["qwen3-coder-30b-a3b-instruct", "Qwen3 Coder 30B", "32k"],
-      ["llama-3.3-70b-instruct", "Llama 3.3 70B", "128k"],
-      ["deepseek-r1-distill-llama-70b", "R1 Distill 70B", "128k"],
+      ["qwen3-coder-30b-a3b-instruct", "Qwen3 Coder 30B", "128k"],
+      ["llama-3.3-70b-instruct", "Llama 3.3 70B", "100k"],
+      ["deepseek-r1-distill-llama-70b", "R1 Distill 70B", "16k"],
       ["mistral-small-3.2-24b-instruct-2506", "Mistral Small 3.2", "128k"]
     ]
   },
   "kilocode": {
     "name": "KiloCode",
     "url": "https://api.kilo.ai/api/gateway/chat/completions",
+    "contextUrl": "https://api.kilo.ai/api/gateway/models",
     "models": [
       ["arcee-ai/trinity-large-preview", "Trinity Large", "128k"]
     ]
@@ -361,6 +368,7 @@ export const sources = {
   "kiro": {
     "name": "Kiro",
     "url": "https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse",
+    "contextUrl": "https://kiro.dev/docs/cli/reference/models/",
     "models": [
       ["claude-sonnet-4.5", "Claude Sonnet 4.5", "200k"],
       ["claude-haiku-4.5", "Claude Haiku 4.5", "200k"]
@@ -369,6 +377,7 @@ export const sources = {
   "googleai": {
     "name": "Google AI",
     "url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+    "contextUrl": "https://ai.google.dev/gemma/docs/core/model_card_3",
     "discoverable": true,
     "models": [
       ["gemma-3-27b-it", "Gemma 3 27B", "128k"],
@@ -384,7 +393,7 @@ function buildModels() {
     for (const m of provider.models) {
       const [modelId, label, ctx] = m
       const intell = getScore(modelId)
-      result.push([modelId, label, intell, ctx, providerKey])
+      result.push([modelId, label, intell, ctx, providerKey, ctx ? 'curated' : null, ctx ? provider.contextUrl || null : null])
     }
   }
   return result
