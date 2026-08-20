@@ -1670,6 +1670,27 @@ describe('findBestModel', () => {
     ]
     assert.equal(findBestModel(results).label, 'Faster')
   })
+
+  it('skips proxy-rate-limited models even when their QoS would be highest (regression: dashboard "Current Model" pointed at a wasRateLimited=429 model)', () => {
+    // Top-tier intell + low latency + 100% uptime -- every QoS input screams "pick me".
+    // The proxy has flagged this model as rate-limited, so it must be excluded.
+    const results = [
+      mockResult({
+        label: 'Gemini 3.7 Flash',
+        status: 'up',
+        pings: [{ ms: 100, code: '200' }, { ms: 150, code: '200' }],
+        intell: 76,
+        rateLimit: { wasRateLimited: true, capturedAt: Date.now() },
+      }),
+      mockResult({
+        label: 'Faster',
+        status: 'up',
+        pings: [{ ms: 200, code: '200' }, { ms: 250, code: '200' }],
+        intell: 35,
+      }),
+    ]
+    assert.equal(findBestModel(results).label, 'Faster')
+  })
 })
 
 describe('rankModelsForRouting', () => {
@@ -1694,6 +1715,29 @@ describe('rankModelsForRouting', () => {
 
     const ranked = rankModelsForRouting(results, ['a'])
     assert.deepEqual(ranked.map(r => r.modelId), ['d'])
+  })
+
+  it('excludes proxy-rate-limited models (wasRateLimited === true)', () => {
+    const results = [
+      mockResult({
+        modelId: 'rate-limited',
+        label: 'RateLimited',
+        status: 'up',
+        pings: [{ ms: 100, code: '200' }],
+        intell: 99,
+        rateLimit: { wasRateLimited: true, capturedAt: Date.now() },
+      }),
+      mockResult({
+        modelId: 'healthy',
+        label: 'Healthy',
+        status: 'up',
+        pings: [{ ms: 300, code: '200' }],
+        intell: 20,
+      }),
+    ]
+
+    const ranked = rankModelsForRouting(results)
+    assert.deepEqual(ranked.map(r => r.modelId), ['healthy'])
   })
 })
 
