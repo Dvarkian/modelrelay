@@ -1932,6 +1932,11 @@
       <div id="autoping-container" class="provider-section">
         <!-- Auto-ping settings generated here -->
       </div>
+      <h3 style="margin: 2rem 0 0.25rem; font-size: 1rem;">Request Logging</h3>
+      <p style="color: var(--text-muted); margin: 0 0 1.25rem; font-size: 0.84rem;">Control whether request bodies are captured and whether logs are written to disk. Prompt/response content can contain sensitive data.</p>
+      <div id="logging-container" class="provider-section">
+        <!-- Logging settings generated here -->
+      </div>
       <h3 style="margin: 2rem 0 0.25rem; font-size: 1rem;">Pinning</h3>
       <p style="color: var(--text-muted); margin: 0 0 1.25rem; font-size: 0.84rem;">Choose whether pinning locks one exact provider model or the whole canonical model family across providers.</p>
       <div id="pinning-settings-container" class="provider-section">
@@ -2160,6 +2165,29 @@
       }
     })();
 
+    // Attach the access token (LAN mode) to every API call and prompt for it on 401.
+    // Loopback (local) usage never sends a token and is unaffected.
+    (function () {
+      const TOKEN_KEY = 'modelrelay-access-token';
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = async function (url, options) {
+        const opts = options || {};
+        const headers = new Headers(opts.headers || {});
+        const token = localStorage.getItem(TOKEN_KEY);
+        if (token) headers.set('Authorization', 'Bearer ' + token);
+        const res = await originalFetch(url, Object.assign({}, opts, { headers }));
+        if (res.status === 401) {
+          const wanted = window.prompt('This server requires an access token (LAN mode). Enter the token printed when modelrelay started:');
+          if (wanted && wanted.trim()) {
+            localStorage.setItem(TOKEN_KEY, wanted.trim());
+            headers.set('Authorization', 'Bearer ' + wanted.trim());
+            return originalFetch(url, Object.assign({}, opts, { headers }));
+          }
+        }
+        return res;
+      };
+    })();
+
     function toggleTheme() {
       const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
       if (isDark) {
@@ -2327,7 +2355,7 @@
 
         if (pillEl) {
           if (meta.updateAvailable && meta.latestVersion) {
-            pillEl.innerHTML = `<span class="update-badge" onclick="startManualUpdate('${meta.latestVersion}')">✨ Update to v${meta.latestVersion}</span>`;
+            pillEl.innerHTML = `<span class="update-badge" onclick="startManualUpdate(${jsStringAttr(meta.latestVersion)})">✨ Update to v${escapeHtml(meta.latestVersion)}</span>`;
             pillEl.style.display = 'inline-flex';
             pillEl.title = `Current: v${meta.version}`;
           } else {
@@ -3042,15 +3070,15 @@
       tr.innerHTML = `
           <td>
             <div style="display:flex; flex-direction:column; gap:2px; align-items:center;">
-              <div class="expand-btn" onclick='openDrawer(${JSON.stringify(m).replace(/'/g, "&apos;")})'>
+              <div class="expand-btn" onclick='openDrawer(${escapeHtml(JSON.stringify(m))})'>
                 <svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 2v8M2 6h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
               </div>
-              <div class="pin-row-btn ${isPinnedRow ? 'pinned' : ''}" onclick="pinModel('${isPinnedRow ? '' : m.modelId}', '${m.providerKey}')" title="${isPinnedRow ? 'Unpin model' : 'Pin model'}">📌</div>
+              <div class="pin-row-btn ${isPinnedRow ? 'pinned' : ''}" onclick="pinModel(${jsStringAttr(isPinnedRow ? '' : m.modelId)}, ${jsStringAttr(m.providerKey)})" title="${isPinnedRow ? 'Unpin model' : 'Pin model'}">📌</div>
             </div>
           </td>
-          <td style="cursor:pointer;" onclick='openDrawer(${JSON.stringify(m).replace(/'/g, "&apos;")})'>
-            <div style="font-weight: 600;">${m.status === 'banned' ? '🚫 ' : (m.status === 'excluded' ? '⛔ ' : '')}${m.label}</div>
-            <div style="font-size: 0.75rem; color: var(--text-muted);">${m.providerKey}</div>
+          <td style="cursor:pointer;" onclick='openDrawer(${escapeHtml(JSON.stringify(m))})'>
+            <div style="font-weight: 600;">${m.status === 'banned' ? '🚫 ' : (m.status === 'excluded' ? '⛔ ' : '')}${escapeHtml(m.label)}</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(m.providerKey)}</div>
             <div class="model-tag-row">${renderModelTagChips(m.tags)}</div>
           </td>
           <td>
@@ -3138,7 +3166,7 @@
         ? '<span style="font-size:0.75rem;color:var(--text-muted);">No tags yet</span>'
         : '';
       return normalized.map(tag => editable
-        ? `<button class="model-tag" onclick="removeModelTag('${escapeHtml(tag)}')" title="Remove ${escapeHtml(tag)}">${escapeHtml(tag)} ×</button>`
+        ? `<button class="model-tag" onclick="removeModelTag(${jsStringAttr(tag)})" title="Remove ${escapeHtml(tag)}">${escapeHtml(tag)} ×</button>`
         : `<span class="model-tag">${escapeHtml(tag)}</span>`).join('');
     }
 
@@ -3341,6 +3369,56 @@
           </div>
         </div>
       `;
+    }
+
+    function renderLoggingSettings(logging) {
+      const container = document.getElementById('logging-container');
+      if (!container) return;
+      const logContent = logging.logRequestContent !== false;
+      const persistLogs = logging.persistRequestLogs !== false;
+      container.innerHTML = `
+        <div class="autoupdate-panel">
+          <div class="autoupdate-header">
+            <div>
+              <h3 class="autoupdate-title">Content Capture &amp; Persistence</h3>
+              <div class="autoupdate-subtitle">"Capture content" stores full prompts/responses; "Persist to disk" writes them to ~/.modelrelay-logs.json.</div>
+            </div>
+            <span class="autoupdate-status-pill ${(logContent && persistLogs) ? 'on' : 'off'}">${(logContent && persistLogs) ? 'Full' : 'Limited'}</span>
+          </div>
+          <div class="autoupdate-controls">
+            <label class="autoupdate-toggle-label">
+              <input type="checkbox" id="logging-content" ${logContent ? 'checked' : ''}>
+              Capture prompt/response content
+            </label>
+            <label class="autoupdate-toggle-label">
+              <input type="checkbox" id="logging-persist" ${persistLogs ? 'checked' : ''}>
+              Persist request logs to disk
+            </label>
+            <button class="btn" onclick="saveLoggingSettings()">Save Changes</button>
+            <span id="logging-save-status" class="autoupdate-save-status"></span>
+          </div>
+        </div>
+      `;
+    }
+
+    async function saveLoggingSettings() {
+      const logRequestContent = document.getElementById('logging-content').checked;
+      const persistRequestLogs = document.getElementById('logging-persist').checked;
+      const statusEl = document.getElementById('logging-save-status');
+      try {
+        const res = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ logRequestContent, persistRequestLogs }),
+        });
+        if (!res.ok) throw new Error('Failed to save.');
+        statusEl.textContent = 'Saved!';
+        statusEl.style.color = 'var(--success)';
+        setTimeout(() => { statusEl.textContent = ''; }, 2000);
+      } catch (err) {
+        statusEl.textContent = err.message || 'Failed to save.';
+        statusEl.style.color = 'var(--error)';
+      }
     }
 
     async function saveAutoPingSettings() {
@@ -3733,20 +3811,23 @@
 
     async function loadSettings() {
       try {
-        const [providersRes, autoUpdateRes, filterRulesRes, pinningRes, autoPingRes] = await Promise.all([
+        const [providersRes, autoUpdateRes, filterRulesRes, pinningRes, autoPingRes, metaRes] = await Promise.all([
           fetch('/api/config'),
           fetch('/api/autoupdate'),
           fetch('/api/filter-rules'),
           fetch('/api/pinning'),
           fetch('/api/auto-ping'),
+          fetch('/api/meta'),
         ]);
         const providers = await providersRes.json();
         const autoUpdate = await autoUpdateRes.json();
         const filterRules = await filterRulesRes.json();
         const pinning = await pinningRes.json();
         const autoPing = await autoPingRes.json();
+        const meta = await metaRes.json();
         renderAutoUpdateSettings(autoUpdate);
         renderAutoPingSettings(autoPing);
+        renderLoggingSettings((meta && meta.logging) || {});
         renderPinningSettings(pinning);
         renderFilterRules(filterRules, providers);
         renderProviderFilterGroup(providers);
@@ -3845,21 +3926,21 @@
             : 'Set the upstream base URL and exact model ID for this provider. If base URL is blank, modelrelay uses https://ollama.com/v1 and expects an OLLAMA_API_KEY.';
           const openAiCompatibleFieldsHtml = showsBaseUrlFields ? `
             <div class="form-group" style="display:flex; gap:8px; align-items:center; margin-top:8px;">
-              <input type="text" id="base-url-${p.key}" value="${escapeHtml(p.baseUrl || '')}" placeholder="${baseUrlPlaceholder}" style="flex:1;" onblur="updateProviderBaseUrl('${p.key}')">
+              <input type="text" id="base-url-${p.key}" value="${escapeHtml(p.baseUrl || '')}" placeholder="${baseUrlPlaceholder}" style="flex:1;" onblur="updateProviderBaseUrl(${jsStringAttr(p.key)})">
             </div>
             <div class="form-group" style="display:flex; gap:8px; align-items:center; margin-top:8px;">
-              <input type="text" id="model-id-${p.key}" value="${escapeHtml(p.modelId || '')}" placeholder="upstream-model-id (optional if discovery is on)" style="flex:1;" onblur="updateProviderModelId('${p.key}')">
+              <input type="text" id="model-id-${p.key}" value="${escapeHtml(p.modelId || '')}" placeholder="upstream-model-id (optional if discovery is on)" style="flex:1;" onblur="updateProviderModelId(${jsStringAttr(p.key)})">
             </div>
             <div style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">${baseUrlNote}</div>
             ${p.isOpenAICompatibleInstance ? `
               <div style="margin-top:10px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                 <label style="display:flex; align-items:center; gap:6px; font-size:0.8rem; cursor:pointer;">
-                  <input type="checkbox" id="discover-${p.key}" ${p.discoverModels !== false ? 'checked' : ''} onchange="updateProviderDiscoverModels('${p.key}')">
+                  <input type="checkbox" id="discover-${p.key}" ${p.discoverModels !== false ? 'checked' : ''} onchange="updateProviderDiscoverModels(${jsStringAttr(p.key)})">
                   Discover models from <code>/v1/models</code>
                 </label>
               </div>
               <div style="margin-top:10px; display:flex; justify-content:flex-end;">
-                <button onclick="removeOpenAICompatibleEndpoint('${escapeHtml(p.openAICompatibleInstanceId)}', ${JSON.stringify(p.name)})" style="border:1px solid var(--status-error-border); background:var(--status-error-bg); color:var(--status-error-text); cursor:pointer; padding:6px 12px; border-radius:6px; font-size:0.78rem; font-weight:600;">Remove Endpoint</button>
+                <button onclick="removeOpenAICompatibleEndpoint(${jsStringAttr(p.openAICompatibleInstanceId)}, ${jsStringAttr(p.name)})" style="border:1px solid var(--status-error-border); background:var(--status-error-bg); color:var(--status-error-text); cursor:pointer; padding:6px 12px; border-radius:6px; font-size:0.78rem; font-weight:600;">Remove Endpoint</button>
               </div>
             ` : ''}
           ` : '';
@@ -3867,7 +3948,7 @@
           const optionalBearerAuthHtml = (tokenOptional && p.hasKey) ? `
             <div style="margin-top:10px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
               <label style="display:flex; align-items:center; gap:6px; font-size:0.8rem; cursor:pointer;">
-                <input type="checkbox" id="bearer-auth-${p.key}" ${p.useBearerAuth !== false ? 'checked' : ''} onchange="updateProviderBearerAuth('${p.key}')">
+                <input type="checkbox" id="bearer-auth-${p.key}" ${p.useBearerAuth !== false ? 'checked' : ''} onchange="updateProviderBearerAuth(${jsStringAttr(p.key)})">
                 Attach API Key as Bearer
               </label>
             </div>
@@ -3941,7 +4022,7 @@
                 <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                   <span style="background:${kiroStatusBg}; color:${kiroStatusColor}; border-radius:999px; padding:2px 10px; font-size:0.75rem; font-weight:600;">${kiroStatusOk ? '✅' : '⚠️'} ${escapeHtml(kiroStatusText)}</span>
                   <h3 style="margin:0; font-size:1rem;">${p.name}</h3>
-                  <button class="provider-model-refresh-btn ${isRefreshing ? 'is-loading' : ''}" ${isRefreshing ? 'disabled' : ''} onclick='refreshProviderModels(${JSON.stringify(p.key)}, ${JSON.stringify(p.name)})' title="Refresh provider models">
+                  <button class="provider-model-refresh-btn ${isRefreshing ? 'is-loading' : ''}" ${isRefreshing ? 'disabled' : ''} onclick='refreshProviderModels(${jsStringAttr(p.key)}, ${jsStringAttr(p.name)})' title="Refresh provider models">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                       <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
                       <polyline points="21 3 21 9 15 9"></polyline>
@@ -3951,7 +4032,7 @@
                 </div>
                 <div style="display:flex; align-items:center; gap:10px;">
                   <label style="display:flex; align-items:center; gap:6px; font-size:0.8rem; cursor:pointer;">
-                    <input type="checkbox" id="enable-${p.key}" ${p.enabled ? 'checked' : ''} onchange="updateProvider('${p.key}')">
+                    <input type="checkbox" id="enable-${p.key}" ${p.enabled ? 'checked' : ''} onchange="updateProvider(${jsStringAttr(p.key)})">
                     Enabled
                   </label>
                 </div>
@@ -3966,10 +4047,10 @@
               </div>
               <div class="form-group" style="display:flex; gap:8px; align-items:center;">
                 <input type="password" id="key-${p.key}" placeholder="${p.hasKey ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (Refresh Token Configured)' : 'Paste Kiro refresh token...'}" style="flex:1; background:var(--input-bg); color:var(--text);" onkeydown="if(event.key==='Enter'){event.preventDefault(); saveKiroRefreshToken();}">
-                <button onclick="toggleProviderKeyVisibility('${p.key}', this)" title="Show or hide token" aria-label="Show or hide token" style="border:1px solid var(--border); background:var(--input-bg); color:var(--text); cursor:pointer; padding:8px 10px; border-radius:6px; font-size:0.85rem; white-space:nowrap;">👁</button>
-                ${p.hasKey ? `<button onclick="copyProviderKey('${p.key}', this)" title="Copy token" style="border:1px solid var(--border); background:var(--input-bg); color:var(--text); cursor:pointer; padding:8px 10px; border-radius:6px; font-size:0.78rem; white-space:nowrap;">Copy</button>` : ''}
+                <button onclick="toggleProviderKeyVisibility(${jsStringAttr(p.key)}, this)" title="Show or hide token" aria-label="Show or hide token" style="border:1px solid var(--border); background:var(--input-bg); color:var(--text); cursor:pointer; padding:8px 10px; border-radius:6px; font-size:0.85rem; white-space:nowrap;">👁</button>
+                ${p.hasKey ? `<button onclick="copyProviderKey(${jsStringAttr(p.key)}, this)" title="Copy token" style="border:1px solid var(--border); background:var(--input-bg); color:var(--text); cursor:pointer; padding:8px 10px; border-radius:6px; font-size:0.78rem; white-space:nowrap;">Copy</button>` : ''}
                 <button onclick="saveKiroRefreshToken()" style="border:1px solid var(--status-success-border); background:var(--status-success-bg); color:var(--status-success-text); cursor:pointer; padding:8px 12px; border-radius:6px; font-size:0.8rem; font-weight:600; white-space:nowrap;">Save Token</button>
-                ${p.hasKey ? `<button onclick="deleteProviderKey('${p.key}')" style="border:1px solid var(--status-error-border); background:var(--status-error-bg); color:var(--status-error-text); cursor:pointer; padding:8px 12px; border-radius:6px; font-size:0.8rem; font-weight:600; white-space:nowrap;">Delete Token</button>` : ''}
+                ${p.hasKey ? `<button onclick="deleteProviderKey(${jsStringAttr(p.key)})" style="border:1px solid var(--status-error-border); background:var(--status-error-bg); color:var(--status-error-text); cursor:pointer; padding:8px 12px; border-radius:6px; font-size:0.8rem; font-weight:600; white-space:nowrap;">Delete Token</button>` : ''}
               </div>
               <div style="font-size:0.75rem; color:var(--text-muted); margin-top:6px;">ModelRelay stores the resulting Kiro refresh token locally in your ModelRelay config. Auto-import/manual token are still useful if Kiro is already signed in on this machine.</div>
               ${kiroDeviceAuthHtml}
@@ -3977,7 +4058,7 @@
               ${kiroMessageHtml}
               <div class="form-group" style="display:flex; gap:8px; align-items:center; margin-top:12px;">
                 <span style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap;">Ping interval (min):</span>
-                <input type="number" id="ping-interval-${p.key}" min="1" step="1" value="${p.pingIntervalMinutes || ''}" placeholder="30" style="width:70px; padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-size:0.8rem; background:var(--input-bg); color:var(--text);" onchange="updateProviderPingInterval('${p.key}')">
+                <input type="number" id="ping-interval-${p.key}" min="1" step="1" value="${p.pingIntervalMinutes || ''}" placeholder="30" style="width:70px; padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-size:0.8rem; background:var(--input-bg); color:var(--text);" onchange="updateProviderPingInterval(${jsStringAttr(p.key)})">
                 <span style="font-size:0.75rem; color:var(--text-muted);">(default: 30)</span>
               </div>
               ${providerErrorHtml}
@@ -3991,7 +4072,7 @@
               <div style="display:flex; align-items:center; gap:10px;">
                 <span style="background:${statusBg}; color:${statusColor}; border-radius:999px; padding:2px 10px; font-size:0.75rem; font-weight:600;">${statusIcon} ${statusText}</span>
                 <h3 style="margin:0; font-size:1rem;">${p.name}</h3>
-                <button class="provider-model-refresh-btn ${isRefreshing ? 'is-loading' : ''}" ${isRefreshing ? 'disabled' : ''} onclick='refreshProviderModels(${JSON.stringify(p.key)}, ${JSON.stringify(p.name)})' title="Refresh provider models">
+                <button class="provider-model-refresh-btn ${isRefreshing ? 'is-loading' : ''}" ${isRefreshing ? 'disabled' : ''} onclick='refreshProviderModels(${jsStringAttr(p.key)}, ${jsStringAttr(p.name)})' title="Refresh provider models">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
                     <polyline points="21 3 21 9 15 9"></polyline>
@@ -4002,20 +4083,20 @@
               </div>
               <div style="display:flex; align-items:center; gap:10px;">
                 <label style="display:flex; align-items:center; gap:6px; font-size:0.8rem; cursor:pointer;">
-                  <input type="checkbox" id="enable-${p.key}" ${p.enabled ? 'checked' : ''} onchange="updateProvider('${p.key}')">
+                  <input type="checkbox" id="enable-${p.key}" ${p.enabled ? 'checked' : ''} onchange="updateProvider(${jsStringAttr(p.key)})">
                   Enabled
                 </label>
               </div>
             </div>
             <div class="form-group" style="display:flex; gap:8px; align-items:center;">
-              <input type="password" id="key-${p.key}" placeholder="${p.hasKey ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (' + (tokenOptional ? 'API Key Configured' : 'Key Configured') + ')' : (tokenOptional ? 'Enter API Key (optional)...' : 'Enter API Key...')}" style="flex:1; background:var(--input-bg); color:var(--text);" onblur="updateProviderKey('${p.key}')">
-              <button onclick="toggleProviderKeyVisibility('${p.key}', this)" title="Show or hide API key" aria-label="Show or hide API key" style="border:1px solid var(--border); background:var(--input-bg); color:var(--text); cursor:pointer; padding:8px 10px; border-radius:6px; font-size:0.85rem; white-space:nowrap;">👁</button>
-              ${p.hasKey ? `<button onclick="copyProviderKey('${p.key}', this)" title="Copy API key" style="border:1px solid var(--border); background:var(--input-bg); color:var(--text); cursor:pointer; padding:8px 10px; border-radius:6px; font-size:0.78rem; white-space:nowrap;">Copy</button>` : ''}
-              ${p.hasKey ? `<button onclick="deleteProviderKey('${p.key}')" style="border:1px solid var(--status-error-border); background:var(--status-error-bg); color:var(--status-error-text); cursor:pointer; padding:8px 12px; border-radius:6px; font-size:0.8rem; font-weight:600; white-space:nowrap;">Delete Key</button>` : ''}
+              <input type="password" id="key-${p.key}" placeholder="${p.hasKey ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (' + (tokenOptional ? 'API Key Configured' : 'Key Configured') + ')' : (tokenOptional ? 'Enter API Key (optional)...' : 'Enter API Key...')}" style="flex:1; background:var(--input-bg); color:var(--text);" onblur="updateProviderKey(${jsStringAttr(p.key)})">
+              <button onclick="toggleProviderKeyVisibility(${jsStringAttr(p.key)}, this)" title="Show or hide API key" aria-label="Show or hide API key" style="border:1px solid var(--border); background:var(--input-bg); color:var(--text); cursor:pointer; padding:8px 10px; border-radius:6px; font-size:0.85rem; white-space:nowrap;">👁</button>
+              ${p.hasKey ? `<button onclick="copyProviderKey(${jsStringAttr(p.key)}, this)" title="Copy API key" style="border:1px solid var(--border); background:var(--input-bg); color:var(--text); cursor:pointer; padding:8px 10px; border-radius:6px; font-size:0.78rem; white-space:nowrap;">Copy</button>` : ''}
+              ${p.hasKey ? `<button onclick="deleteProviderKey(${jsStringAttr(p.key)})" style="border:1px solid var(--status-error-border); background:var(--status-error-bg); color:var(--status-error-text); cursor:pointer; padding:8px 12px; border-radius:6px; font-size:0.8rem; font-weight:600; white-space:nowrap;">Delete Key</button>` : ''}
             </div>
             <div class="form-group" style="display:flex; gap:8px; align-items:center; margin-top:8px;">
               <span style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap;">Ping interval (min):</span>
-              <input type="number" id="ping-interval-${p.key}" min="1" step="1" value="${p.pingIntervalMinutes || ''}" placeholder="30" style="width:70px; padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-size:0.8rem; background:var(--input-bg); color:var(--text);" onchange="updateProviderPingInterval('${p.key}')">
+              <input type="number" id="ping-interval-${p.key}" min="1" step="1" value="${p.pingIntervalMinutes || ''}" placeholder="30" style="width:70px; padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-size:0.8rem; background:var(--input-bg); color:var(--text);" onchange="updateProviderPingInterval(${jsStringAttr(p.key)})">
               <span style="font-size:0.75rem; color:var(--text-muted);">(default: 30)</span>
             </div>
             ${(Array.isArray(p.apiKeyPool) && p.apiKeyPool.length > 0) ? `
@@ -4030,17 +4111,17 @@
                     <span style="font-weight:700; color:var(--text-muted); min-width:20px;">[${i}]</span>
                     <span style="font-family:monospace; color:var(--text); flex:1;">${escapeHtml(acct.masked)}</span>
                     <span id="acct-status-${p.key}-${i}" style="font-size:0.7rem;"></span>
-                    <button onclick="removeAccountKey('${p.key}', ${i})" style="border:1px solid var(--status-error-border); background:var(--status-error-bg); color:var(--status-error-text); cursor:pointer; padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:600;">Remove</button>
+                    <button onclick="removeAccountKey(${jsStringAttr(p.key)}, ${i})" style="border:1px solid var(--status-error-border); background:var(--status-error-bg); color:var(--status-error-text); cursor:pointer; padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:600;">Remove</button>
                   </div>
                 `).join('')}
               </div>
               <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">
                 <input type="password" id="new-key-${p.key}" placeholder="Add new account key..." style="flex:1; padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-size:0.78rem; background:var(--input-bg); color:var(--text);">
-                <button onclick="addAccountKey('${p.key}')" style="border:1px solid var(--status-success-border); background:var(--status-success-bg); color:var(--status-success-text); cursor:pointer; padding:6px 12px; border-radius:6px; font-size:0.78rem; font-weight:600;">Add Account</button>
+                <button onclick="addAccountKey(${jsStringAttr(p.key)})" style="border:1px solid var(--status-success-border); background:var(--status-success-bg); color:var(--status-success-text); cursor:pointer; padding:6px 12px; border-radius:6px; font-size:0.78rem; font-weight:600;">Add Account</button>
               </div>
               <div style="display:flex; gap:8px; align-items:center;">
                 <span style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap;">Max turns per account:</span>
-                <input type="number" id="maxturns-${p.key}" min="0" step="1" value="${p.maxTurns || 0}" style="width:70px; padding:5px 8px; border:1px solid var(--border); border-radius:6px; font-size:0.78rem;" onchange="updateProviderMaxTurns('${p.key}')">
+                <input type="number" id="maxturns-${p.key}" min="0" step="1" value="${p.maxTurns || 0}" style="width:70px; padding:5px 8px; border:1px solid var(--border); border-radius:6px; font-size:0.78rem;" onchange="updateProviderMaxTurns(${jsStringAttr(p.key)})">
                 <span style="font-size:0.72rem; color:var(--text-muted);">0 = unlimited</span>
               </div>
             </div>
@@ -5012,7 +5093,7 @@
           let statusBadge = '';
           if (l.status === '200') statusBadge = '<span style="background: var(--status-success-bg); color: var(--status-success-text); padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600;">200 OK</span>';
           else if (l.status === 'pending') statusBadge = '<span style="background: var(--status-info-bg); color: var(--status-info-text); padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600;">Pending...</span>';
-          else statusBadge = `<span style="background: var(--status-error-bg); color: var(--status-error-text); padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600;">${l.status}</span>`;
+          else statusBadge = `<span style="background: var(--status-error-bg); color: var(--status-error-text); padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600;">${escapeHtml(l.status)}</span>`;
           const resolvedModelChip = l.resolvedModel
             ? `<span style="background:var(--status-info-bg); color:var(--status-info-text); padding:2px 8px; border-radius:999px; font-size:0.7rem; font-weight:700;">resolved: ${escapeHtml(l.resolvedModel)}</span>`
             : '';
@@ -5028,7 +5109,7 @@
 
             return `
               <div style="margin-top: 12px; border-left: 3px solid ${colorVar}; padding-left: 12px;">
-                <div style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: ${colorVar}; margin-bottom: 4px;">${m.role}</div>
+                <div style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: ${colorVar}; margin-bottom: 4px;">${escapeHtml(m.role || 'message')}</div>
                 <div style="font-family: monospace; font-size: 0.8rem; white-space: pre-wrap; word-break: break-word; color: var(--text); max-height: 200px; overflow-y: auto; background: var(--chat-bg); padding: 8px; border-radius: 6px; border: 1px solid var(--border);">${formattedContent}</div>
               </div>
             `;
@@ -5097,7 +5178,7 @@
               return `
                 <div style="padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--chat-bg);">
                   <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
-                    <div style="font-size:0.78rem; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"><span style="color:var(--text-muted);">#${idx + 1}</span> ${provider}/${model}</div>
+                    <div style="font-size:0.78rem; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"><span style="color:var(--text-muted);">#${idx + 1}</span> ${escapeHtml(provider)}/${escapeHtml(model)}</div>
                     <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
                       <span style="font-size:0.7rem; color:var(--text-muted);">${duration}</span>
                       <span style="background:${chipBg}; color:${chipFg}; padding:2px 6px; border-radius:999px; font-size:0.68rem; font-weight:700;">${code}</span>
@@ -5127,14 +5208,14 @@
                   <span class="log-chevron">▶</span>
                   <div style="min-width:0;">
                     <div style="display: flex; align-items: center; gap: 10px; flex-wrap:wrap;">
-                      <span style="font-weight: 600; font-size: 0.95rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${l.model}</span>
+                      <span style="font-weight: 600; font-size: 0.95rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(l.model || '(unknown model)')}</span>
                       ${resolvedModelChip}
                       ${statusBadge}
                     </div>
                     <div style="font-size: 0.78rem; color: var(--text-muted); display: flex; gap: 10px; flex-wrap: wrap; margin-top:2px;">
                       <span>${timeStr}</span>
                       <span>•</span>
-                      <span>${l.provider}</span>
+                      <span>${escapeHtml(l.provider || 'unknown provider')}</span>
                       ${hadFailover ? `<span>•</span><span style="color: var(--warning); font-weight: 600;">🔁 ${retryCount} failover${retryCount > 1 ? 's' : ''}</span>` : ''}
                       ${l.duration ? `<span>•</span><span>${l.duration}ms total</span>` : ''}
                       ${l.ttft != null && l.ttft !== l.duration ? `<span>•</span><span style="color: var(--accent);">⚡ ${l.ttft}ms TTFT</span>` : ''}
@@ -5174,10 +5255,29 @@
     }
 
     function escapeHtml(value) {
+      // Escapes quotes too so the result is safe in both text and attribute contexts.
       return String(value)
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // Renders a value as a single-quoted JS string literal that is safe to embed inside
+    // ANY HTML attribute quote style. Dangerous characters are emitted as \uXXXX escapes,
+    // which survive HTML attribute parsing unchanged (no entities, no raw quotes) and are
+    // decoded by the JS engine inside the string literal -- so a quote in the data can
+    // never terminate the attribute or the string.
+    function jsStringAttr(value) {
+      const s = String(value)
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, '\\u0027')
+        .replace(/"/g, '\\u0022')
+        .replace(/</g, '\\u003c')
+        .replace(/>/g, '\\u003e')
+        .replace(/&/g, '\\u0026');
+      return "'" + s + "'";
     }
 
     function stableStringify(value) {
@@ -5400,7 +5500,7 @@
         <div style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
           <div style="min-width:0; flex:1;">
             <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Model ID</div>
-            <div style="font-family: monospace; background: var(--surface-alt); padding: 12px; border-radius: 8px; font-size: 0.875rem; word-break:break-all;">${m.modelId}</div>
+            <div style="font-family: monospace; background: var(--surface-alt); padding: 12px; border-radius: 8px; font-size: 0.875rem; word-break:break-all;">${escapeHtml(m.modelId)}</div>
           </div>
           <div style="display:flex; flex-direction:column; gap:6px; flex-shrink:0;">
             <button onclick="pinModel('${isModelPinned ? '' : m.modelId}', '${m.providerKey}')" style="background: ${isModelPinned ? 'var(--status-info-bg)' : 'var(--surface-alt)'}; border: ${isModelPinned ? '1px solid var(--status-info-border)' : '1px solid transparent'}; padding: 8px 16px; border-radius: 6px; font-weight: 600; font-size: 0.75rem; color: ${isModelPinned ? 'var(--status-info-text)' : 'var(--text)'}; cursor: pointer;">

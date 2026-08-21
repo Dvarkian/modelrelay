@@ -137,7 +137,7 @@ If you want manual setup, merge this into `~/.openclaw/openclaw.json`:
 ## CLI
 
 ```bash
-modelrelay [--port <number>] [--log] [--ban <model1,model2>]
+modelrelay [--port <number>] [--host <address>] [--log] [--ban <model1,model2>]
 modelrelay onboard [--port <number>]
 modelrelay install --autostart
 modelrelay start --autostart
@@ -151,6 +151,29 @@ modelrelay config import <token>
 ```
 
 Request terminal logging is disabled by default. Use `--log` to enable it.
+
+## Security
+
+By default modelrelay binds to **loopback only** (`127.0.0.1`), so the dashboard and the `/v1` proxy are reachable only from the machine running it. The dashboard API and proxy also reject cross-origin browser requests (protecting against malicious websites fetching `http://localhost:7352`) and unexpected `Host` headers (DNS-rebinding protection).
+
+To expose the router on your LAN, opt in explicitly:
+
+```bash
+modelrelay --host 0.0.0.0
+# or
+MODELRELAY_HOST=0.0.0.0 modelrelay
+```
+
+LAN mode prints an **access token** at startup. The dashboard prompts for it once (stored in your browser); non-browser clients (curl, OpenCode on another machine) must send it as `Authorization: Bearer <token>`. Loopback clients never need the token.
+
+### Request logging
+
+Request bodies and streamed responses are captured in-memory and persisted to `~/.modelrelay-logs.json` by default, because they may contain sensitive prompts. You can limit this from **Settings → Request Logging** in the Web UI, or via env vars:
+
+```bash
+MODELRELAY_LOG_CONTENT=0      # store roles only, never prompt/response bodies
+MODELRELAY_PERSIST_LOGS=0     # keep logs in memory only, never write to disk
+```
 
 `modelrelay install --autostart` also triggers an immediate start attempt so you do not need a separate command after install.
 

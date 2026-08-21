@@ -8,7 +8,6 @@ import { parseArgs } from '../lib/utils.js'
 import { loadConfig, saveConfig, exportConfigToken, importConfigToken } from '../lib/config.js'
 import { runOnboard } from '../lib/onboard.js'
 import { getAutostartStatus, installAutostart, startAutostart, uninstallAutostart } from '../lib/autostart.js'
-import { getPreferredLanIpv4Address } from '../lib/network.js'
 import { runUpdateCommand } from '../lib/update.js'
 import chalk from 'chalk'
 
@@ -38,7 +37,8 @@ function printHelp() {
   console.log('')
   console.log('Flags:')
   console.log('  --port <number>    Router HTTP port (default: 7352)')
-  console.log('  --log              Enable request payload logging in terminal (off by default)')
+  console.log('  --host <address>   Listen address. Loopback 127.0.0.1 by default (local only).')
+  console.log('                     Use --host 0.0.0.0 to expose on the LAN (requires access token)')
   console.log('  --no-log           Disable request payload logging in terminal (legacy/override)')
   console.log('  --ban <ids>        Comma-separated model IDs to keep banned')
   console.log('  --onboard          Same as the onboard subcommand')
@@ -155,9 +155,8 @@ async function main() {
     if (result.ok) {
       console.log(result.message)
       if (result.path) console.log(`Path: ${result.path}`)
-      if (cliArgs.autostartAction === 'install') {
-        const lanIp = getPreferredLanIpv4Address()
-        if (lanIp) console.log(`Visit http://${lanIp}:7352 to access the Web UI from another computer on your network.`)
+        if (cliArgs.autostartAction === 'install') {
+        console.log('Local access only (loopback). To expose on the LAN, set host via `--host 0.0.0.0` or MODELRELAY_HOST.')
       }
       return
     }
@@ -167,7 +166,7 @@ async function main() {
   }
 
   if (cliArgs.command === 'update') {
-    const result = runUpdateCommand()
+    const result = await runUpdateCommand()
     if (result.ok) {
       console.log(result.message)
       return
@@ -313,36 +312,31 @@ async function main() {
         console.log(chalk.green(`✔ Removed single key for ${provider}.`))
         return
       }
-      const idx = Number(keyOrIndex)
-      if (!isNaN(idx) && idx >= 0 && idx < existing.length) {
-        const removed = existing.splice(idx, 1)[0]
-        if (existing.length === 0) {
-          delete config.apiKeys[provider]
-        } else if (existing.length === 1) {
-          config.apiKeys[provider] = existing[0]
-        } else {
-          config.apiKeys[provider] = existing
-        }
-        saveConfig(config)
-        console.log(chalk.green(`✔ Removed key [${idx}] ${removed.slice(0, 4)}... from ${provider} (${existing.length} remaining)`))
-      } else {
-        const idx2 = existing.indexOf(keyOrIndex)
-        if (idx2 !== -1) {
-          existing.splice(idx2, 1)
-          if (existing.length === 0) {
-            delete config.apiKeys[provider]
-          } else if (existing.length === 1) {
-            config.apiKeys[provider] = existing[0]
-          } else {
-            config.apiKeys[provider] = existing
-          }
-          saveConfig(config)
-          console.log(chalk.green(`✔ Removed key ${keyOrIndex.slice(0, 4)}... from ${provider} (${existing.length} remaining)`))
-        } else {
-          console.error(`Key not found in ${provider} pool: ${keyOrIndex}`)
-          process.exit(1)
+      // Prefer an exact key match over interpreting the value as an index, so an
+      // all-numeric key can be removed by value instead of accidentally by position.
+      const exactIdx = existing.indexOf(keyOrIndex)
+      let removedIdx = exactIdx
+      if (removedIdx === -1) {
+        const idx = Number(keyOrIndex)
+        if (!isNaN(idx) && Number.isInteger(idx) && idx >= 0 && idx < existing.length) {
+          removedIdx = idx
         }
       }
+      if (removedIdx === -1) {
+        console.error(`Key not found in ${provider} pool: ${keyOrIndex}`)
+        process.exit(1)
+      }
+      const removed = existing.splice(removedIdx, 1)[0]
+      if (existing.length === 0) {
+        delete config.apiKeys[provider]
+      } else if (existing.length === 1) {
+        config.apiKeys[provider] = existing[0]
+      } else {
+        config.apiKeys[provider] = existing
+      }
+      saveConfig(config)
+      const removedLabel = exactIdx !== -1 ? keyOrIndex.slice(0, 4) : `[${removedIdx}] ${removed.slice(0, 4)}`
+      console.log(chalk.green(`✔ Removed key ${removedLabel}... from ${provider} (${existing.length} remaining)`))
       return
     }
 
@@ -444,7 +438,7 @@ async function main() {
 
   const { runServer } = await import('../lib/server.js')
 
-  await runServer(config, cliArgs.portValue || 7352, cliArgs.enableLog, cliArgs.bannedModels)
+  await runServer(config, cliArgs.portValue || 7352, cliArgs.enableLog, cliArgs.bannedModels, cliArgs.hostValue)
 }
 
 main().catch(err => {

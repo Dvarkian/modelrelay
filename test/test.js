@@ -26,6 +26,13 @@ import {
   parseArgs,
   parseOpenRouterKeyRateLimit,
   selectNextApiKeyFromPool,
+  pickKeyLevelRateLimit,
+  mergeRateLimits,
+  applyRateLimitCapture,
+  hostnameOf,
+  isLoopbackHostname,
+  isLoopbackRemoteAddress,
+  checkApiRequestAllowed,
   VERDICT_ORDER,
 } from '../lib/utils.js'
 import { buildOpenClawProviderConfig } from '../lib/onboard.js'
@@ -35,7 +42,7 @@ import { getConfiguredTagNames, getModelTagKey, getModelTags as getUserModelTags
 import { resolveAutostartExecPath, resolveAutostartNodePath } from '../lib/autostart.js'
 import { exportConfigToken, getApiKey, getApiKeyPool, getMaxTurns, getPinningMode, getProviderBaseUrl, getProviderModelId, getProviderPingIntervalMs, hasMultipleKeys, importConfigToken, normalizeConfigShape, isOpenAICompatibleInstanceKey, getBaseProviderKey, getOpenAICompatibleInstanceId, buildOpenAICompatibleInstanceKey, listOpenAICompatibleEndpoints, upsertOpenAICompatibleEndpoint, removeOpenAICompatibleEndpoint } from '../lib/config.js'
 import { buildNpmInstallInvocation, buildWindowsPostUpdateRestartCommand, getForcedUpdateVersion, getLocalUpdateTarballPath, getLocalUpdateVersion, isRunningFromSource, shouldStopAutostartBeforeUpdate } from '../lib/update.js'
-import { buildKiroRequestPayload, buildKiroSocialLoginUrl, buildOpencodeHeaders, buildOpencodeProjectId, buildProviderRequestBody, buildProviderRequestHeaders, exchangeKiroSocialAuthFlow, exchangeKiroSocialCode, extractKiroEmailFromAccessToken, extractOllamaModelRecords, extractOpenAICompatibleModelRecords, buildOpenAICompatibleModelsListUrl, getAccountStatus, getKiroRefreshToken, hasKiroAuthConfigured, getPinnedModelCandidate, getPinnedModelMatches, isProviderAuthOptional, isProviderBearerAuthEnabled, parseKiroEventFrame, pollKiroBuilderIdToken, providerWantsBearerAuth, resolveKiroOAuthAccessToken, shouldRetryOptionalProviderWithBearer, startKiroBuilderIdDeviceAuth, startKiroSocialAuthFlow, toOllamaModelMeta, toOpenAICompatibleDiscoveredModelMeta, toOpenCodeModelMeta, toOpenRouterModelMeta, toKiloCodeModelMeta, transformKiroResponse } from '../lib/server.js'
+import { buildKiroRequestPayload, buildKiroSocialLoginUrl, buildOpencodeHeaders, buildOpencodeProjectId, buildProviderRequestBody, buildProviderRequestHeaders, exchangeKiroSocialAuthFlow, exchangeKiroSocialCode, extractKiroEmailFromAccessToken, extractOllamaModelRecords, extractOpenAICompatibleModelRecords, buildOpenAICompatibleModelsListUrl, getAccountStatus, getKiroRefreshToken, hasKiroAuthConfigured, getPinnedModelCandidate, getPinnedModelMatches, isProviderAuthOptional, isProviderBearerAuthEnabled, parseKiroEventFrame, pollKiroBuilderIdToken, providerWantsBearerAuth, resolveKiroOAuthAccessToken, shouldRetryOptionalProviderWithBearer, startKiroBuilderIdDeviceAuth, startKiroSocialAuthFlow, toOllamaModelMeta, toOpenAICompatibleDiscoveredModelMeta, toOpenCodeModelMeta, toOpenRouterModelMeta, toKiloCodeModelMeta, transformKiroResponse, _setKeyPoolState } from '../lib/server.js'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, '..')
 
@@ -176,6 +183,38 @@ describe('config helpers', () => {
     const plainBase64 = Buffer.from(json, 'utf8').toString('base64')
     const imported = importConfigToken(plainBase64)
     assert.equal(imported.apiKeys.kilocode, 'abc')
+  })
+
+  it('normalizes new security and logging fields with safe defaults', () => {
+    const normalized = normalizeConfigShape({})
+    assert.equal(normalized.host, '127.0.0.1')
+    assert.equal(normalized.accessToken, null)
+    assert.equal(normalized.logRequestContent, true)
+    assert.equal(normalized.persistRequestLogs, true)
+
+    const preserved = normalizeConfigShape({
+      host: '0.0.0.0',
+      accessToken: 'tok-123',
+      logRequestContent: false,
+      persistRequestLogs: false,
+    })
+    assert.equal(preserved.host, '0.0.0.0')
+    assert.equal(preserved.accessToken, 'tok-123')
+    assert.equal(preserved.logRequestContent, false)
+    assert.equal(preserved.persistRequestLogs, false)
+  })
+
+  it('honors MODELRELAY_HOST and logging env overrides', () => {
+    withEnv({
+      MODELRELAY_HOST: '0.0.0.0',
+      MODELRELAY_LOG_CONTENT: '0',
+      MODELRELAY_PERSIST_LOGS: 'false',
+    }, () => {
+      const normalized = normalizeConfigShape({})
+      assert.equal(normalized.host, '0.0.0.0')
+      assert.equal(normalized.logRequestContent, false)
+      assert.equal(normalized.persistRequestLogs, false)
+    })
   })
 })
 
@@ -1741,6 +1780,180 @@ describe('rankModelsForRouting', () => {
   })
 })
 
+describe('rate-limit scoping', () => {
+  it('pickKeyLevelRateLimit returns only the key-level credit fields', () => {
+    const payload = {
+      creditLimit: 10,
+      creditRemaining: 4,
+      creditResetAt: 123456,
+      wasRateLimited: true,
+      capturedAt: 999,
+      resetRequestsAt: 555,
+      limitRequests: 20,
+    }
+    assert.deepEqual(pickKeyLevelRateLimit(payload), {
+      creditLimit: 10,
+      creditRemaining: 4,
+      creditResetAt: 123456,
+    })
+  })
+
+  it('pickKeyLevelRateLimit returns null for empty or invalid input', () => {
+    assert.equal(pickKeyLevelRateLimit(null), null)
+    assert.equal(pickKeyLevelRateLimit({}), null)
+    assert.equal(pickKeyLevelRateLimit('nope'), null)
+  })
+
+  it('mergeRateLimits lets the secondary payload win and handles nulls', () => {
+    assert.deepEqual(mergeRateLimits({ a: 1 }, { b: 2 }), { a: 1, b: 2 })
+    assert.deepEqual(mergeRateLimits({ a: 1 }, { a: 2 }), { a: 2 })
+    assert.deepEqual(mergeRateLimits(null, { b: 2 }), { b: 2 })
+    assert.deepEqual(mergeRateLimits({ a: 1 }, null), { a: 1 })
+    assert.equal(mergeRateLimits(null, null), null)
+  })
+
+  it('scopes a captured 429 to the model that produced it, keeping same-provider siblings routable', () => {
+    const providerKey = 'acme'
+    const rateLimited = mockResult({
+      modelId: 'acme/model-a',
+      providerKey,
+      label: 'Acme A',
+      status: 'up',
+      pings: [{ ms: 100, code: '200' }],
+      intell: 99,
+    })
+    const healthy = mockResult({
+      modelId: 'acme/model-b',
+      providerKey,
+      label: 'Acme B',
+      status: 'up',
+      pings: [{ ms: 200, code: '200' }],
+      intell: 30,
+    })
+    const otherProvider = mockResult({
+      modelId: 'other/model',
+      providerKey: 'other',
+      label: 'Other',
+      status: 'up',
+      pings: [{ ms: 300, code: '200' }],
+      intell: 10,
+    })
+
+    const results = [rateLimited, healthy, otherProvider]
+    const captured = { limitRequests: 5, remainingRequests: 0, wasRateLimited: true, capturedAt: Date.now() }
+    applyRateLimitCapture(rateLimited, results, captured, null)
+
+    // The model that actually got the 429 is flagged...
+    assert.equal(rateLimited.rateLimit.wasRateLimited, true)
+    // ...but neither its same-provider sibling nor other providers inherit it.
+    assert.ok(!healthy.rateLimit, 'sibling model must not inherit the 429 flag')
+    assert.ok(!otherProvider.rateLimit)
+
+    const ranked = rankModelsForRouting(results)
+    assert.ok(ranked.includes(healthy), 'healthy same-provider sibling must stay routable')
+    assert.ok(!ranked.includes(rateLimited), 'the 429 model itself must be excluded')
+    assert.equal(findBestModel(results).modelId, 'acme/model-b')
+  })
+
+  it('merges OpenRouter key credits provider-wide without leaking per-model 429 state', () => {
+    const providerKey = 'openrouter'
+    const rateLimited = mockResult({
+      modelId: 'openrouter/model-a',
+      providerKey,
+      label: 'OR A',
+      status: 'up',
+      pings: [{ ms: 100, code: '200' }],
+    })
+    const healthy = mockResult({
+      modelId: 'openrouter/model-b',
+      providerKey,
+      label: 'OR B',
+      status: 'up',
+      pings: [{ ms: 200, code: '200' }],
+    })
+
+    const results = [rateLimited, healthy]
+    const captured = { limitRequests: 5, remainingRequests: 0, wasRateLimited: true, capturedAt: Date.now() }
+    const keyRateLimit = { creditLimit: 10, creditRemaining: 2, creditResetAt: 123456 }
+
+    applyRateLimitCapture(rateLimited, results, captured, keyRateLimit)
+
+    assert.equal(rateLimited.rateLimit.wasRateLimited, true)
+    assert.equal(rateLimited.rateLimit.creditLimit, 10)
+    // Key credits are shared provider-wide...
+    assert.equal(healthy.rateLimit.creditLimit, 10)
+    assert.equal(healthy.rateLimit.creditRemaining, 2)
+    assert.equal(healthy.rateLimit.creditResetAt, 123456)
+    // ...but the sibling must not inherit the 429 flag.
+    assert.equal(healthy.rateLimit.wasRateLimited, undefined)
+    assert.equal(healthy.rateLimit.capturedAt, undefined)
+
+    const ranked = rankModelsForRouting(results)
+    assert.deepEqual(ranked.map(r => r.modelId), ['openrouter/model-b'])
+  })
+
+  it('keeps existing per-model data when key credits are merged during ping cycles', () => {
+    const providerKey = 'openrouter'
+    const r = mockResult({ modelId: 'openrouter/model-a', providerKey, label: 'OR A', status: 'up' })
+    const sibling = mockResult({ modelId: 'openrouter/model-b', providerKey, label: 'OR B', status: 'up' })
+    sibling.rateLimit = { wasRateLimited: false, capturedAt: 1, limitRequests: 3, resetRequestsAt: 555 }
+
+    const results = [r, sibling]
+    const keyRateLimit = { creditLimit: 10, creditRemaining: 2, creditResetAt: 123456 }
+
+    applyRateLimitCapture(r, results, null, keyRateLimit)
+
+    // Sibling keeps its own per-model data and gains the key-level credits.
+    assert.equal(sibling.rateLimit.limitRequests, 3)
+    assert.equal(sibling.rateLimit.resetRequestsAt, 555)
+    assert.equal(sibling.rateLimit.wasRateLimited, false)
+    assert.equal(sibling.rateLimit.creditLimit, 10)
+  })
+})
+
+describe('request security gate', () => {
+  it('hostnameOf strips ports and brackets', () => {
+    assert.equal(hostnameOf('localhost:7352'), 'localhost')
+    assert.equal(hostnameOf('127.0.0.1:7352'), '127.0.0.1')
+    assert.equal(hostnameOf('[::1]:7352'), '::1')
+    assert.equal(hostnameOf('192.168.1.5'), '192.168.1.5')
+    assert.equal(hostnameOf(''), '')
+    assert.equal(hostnameOf(null), '')
+  })
+
+  it('classifies loopback hostnames and remote addresses', () => {
+    assert.equal(isLoopbackHostname('localhost'), true)
+    assert.equal(isLoopbackHostname('127.0.0.1'), true)
+    assert.equal(isLoopbackHostname('127.8.8.8'), true)
+    assert.equal(isLoopbackHostname('::1'), true)
+    assert.equal(isLoopbackHostname('192.168.1.5'), false)
+    assert.equal(isLoopbackRemoteAddress('127.0.0.1'), true)
+    assert.equal(isLoopbackRemoteAddress('::1'), true)
+    assert.equal(isLoopbackRemoteAddress('::ffff:127.0.0.1'), true)
+    assert.equal(isLoopbackRemoteAddress('10.0.0.4'), false)
+  })
+
+  it('blocks cross-origin and rebinding requests in loopback mode', () => {
+    // Same-origin / no-origin dashboard calls pass.
+    assert.equal(checkApiRequestAllowed({ origin: null, host: 'localhost:7352' }), null)
+    assert.equal(checkApiRequestAllowed({ origin: 'http://127.0.0.1:7352', host: '127.0.0.1:7352' }), null)
+    // Drive-by exfiltration from a malicious website.
+    assert.ok(checkApiRequestAllowed({ origin: 'https://evil.example', host: 'localhost:7352' }))
+    // Sandboxed iframes / file:// pages.
+    assert.ok(checkApiRequestAllowed({ origin: 'null', host: 'localhost:7352' }))
+    // DNS rebinding: page served from an attacker domain that resolves to 127.0.0.1.
+    assert.ok(checkApiRequestAllowed({ origin: 'http://evil.example:7352', host: 'evil.example:7352' }))
+    // Valid loopback origin on a LAN-bound server is still allowed.
+    assert.equal(checkApiRequestAllowed({ origin: 'http://localhost:7352', host: '192.168.1.5:7352', lanMode: true }), null)
+  })
+
+  it('allows LAN origins that match the requested host in LAN mode', () => {
+    assert.equal(checkApiRequestAllowed({ origin: 'http://192.168.1.5:7352', host: '192.168.1.5:7352', lanMode: true }), null)
+    // A malicious website is still blocked even in LAN mode.
+    assert.ok(checkApiRequestAllowed({ origin: 'https://evil.example', host: '192.168.1.5:7352', lanMode: true }))
+  })
+})
+
 describe('latencyScore', () => {
   it('returns 1 at zero latency and 0.5 exactly at the target', () => {
     assert.equal(latencyScore(0, 1000), 1)
@@ -1889,6 +2102,19 @@ describe('parseArgs', () => {
     assert.equal(result.portValue, 8080)
     assert.deepEqual(result.bannedModels, ['a', 'b', 'c'])
     assert.equal(result.enableLog, true)
+  })
+
+  it('parses --host and falls back to loopback when absent', () => {
+    assert.equal(parseArgs(argv('--host', '0.0.0.0')).hostValue, '0.0.0.0')
+    assert.equal(parseArgs(argv()).hostValue, null)
+  })
+
+  it('rejects invalid ports instead of silently accepting them', () => {
+    assert.equal(parseArgs(argv('--port', '0')).portValue, 7352)
+    assert.equal(parseArgs(argv('--port', '-1')).portValue, 7352)
+    assert.equal(parseArgs(argv('--port', '99999')).portValue, 7352)
+    assert.equal(parseArgs(argv('--port', 'not-a-number')).portValue, 7352)
+    assert.equal(parseArgs(argv('--port', '65535')).portValue, 65535)
   })
 
   it('defaults to port 7352 and logs disabled', () => {
@@ -2577,6 +2803,22 @@ describe('multi-account round-robin', () => {
     it('returns empty when pool state is not initialized', () => {
       const result = getAccountStatus({ apiKeys: { kilocode: ['k1', 'k2'] } })
       assert.deepEqual(result, { providers: {} })
+    })
+
+    it('reports rate-limited keys without crashing after a 429 (regression: KEY_POOL_COOLDOWN_MS was scoped inside runServer)', () => {
+      const poolState = new Map([
+        ['nvidia', { currentIdx: 1, accounts: new Map([[0, { requests: 2, rateLimitedAt: Date.now() - 10_000 }]]) }],
+      ])
+      _setKeyPoolState(poolState)
+      try {
+        const result = getAccountStatus({ apiKeys: { nvidia: ['k1', 'k2'] } })
+        assert.equal(result.providers.nvidia.keyCount, 2)
+        assert.equal(result.providers.nvidia.currentIdx, 1)
+        assert.equal(result.providers.nvidia.accounts[0].rateLimited, true)
+        assert.equal(result.providers.nvidia.accounts[1].rateLimited, false)
+      } finally {
+        _setKeyPoolState(null)
+      }
     })
   })
 
