@@ -211,6 +211,67 @@ export function getScore(modelId) {
   return scores[base] ?? scores[unprefixed] ?? null;
 }
 
+/**
+ * Known free-tier quotas per provider. These are published limits that
+ * don't always appear in x-ratelimit-* response headers, but are useful
+ * for the dashboard Quota column to know how much headroom remains.
+ *
+ * Numeric fields are reserved for authoritative provider-reported values. Do
+ * not add tier/free-plan estimates here: account, project, model, and billing
+ * limits vary too widely to safely display as usage limits.
+ */
+export const PROVIDER_QUOTAS = {
+  nvidia: {
+    source: 'Provider-reported limits only; account and model limits vary',
+    sourceUrl: 'https://build.nvidia.com/explore/discover',
+  },
+  groq: {
+    source: 'Provider-reported limits only; organization and model limits vary',
+    sourceUrl: 'https://console.groq.com/docs/rate-limits',
+  },
+  cerebras: {
+    source: 'Provider-reported limits only; account tier varies',
+    sourceUrl: 'https://inference-docs.cerebras.ai/resources/rate-limits',
+  },
+  googleai: {
+    source: 'Provider-reported project/model limits only; active limits are shown in AI Studio',
+    sourceUrl: 'https://ai.google.dev/gemini-api/docs/rate-limits',
+  },
+  openrouter: {
+    source: 'Provider-reported limits and account credits only',
+    sourceUrl: 'https://openrouter.ai/docs/api_reference/limits',
+  },
+  codestral: {
+    source: 'Provider-reported limits only; account tier varies',
+    sourceUrl: 'https://docs.mistral.ai/getting-started/models/models_overview/',
+  },
+  scaleway: {
+    source: 'Provider-reported project limits only',
+    sourceUrl: 'https://www.scaleway.com/en/docs/generative-apis/reference-content/generative-apis-limits/',
+  },
+  kiro: {
+    source: 'Provider-reported account allowance only; plan limits vary',
+    sourceUrl: 'https://kiro.dev/pricing/',
+  },
+  kilocode: {
+    source: 'KiloCode account limits are provider-managed; no public universal quota',
+    sourceUrl: 'https://kilocode.ai/',
+  },
+  opencode: {
+    window: 'day',
+    limitScope: 'account/model',
+    source: 'OpenCode Zen free-model daily limits are account/model-specific; paid usage is balance-based',
+    sourceUrl: 'https://opencode.ai/docs/zen/',
+  },
+  ollama: {
+    source: 'Ollama local limits are hardware/configuration based; cloud limits are account-managed',
+    sourceUrl: 'https://docs.ollama.com/api/usage',
+  },
+  'openai-compatible': {
+    source: 'Upstream-specific limits; modelrelay reports only headers and provider errors',
+  },
+}
+
 export const sources = {
   "nvidia": {
     "name": "NIM",

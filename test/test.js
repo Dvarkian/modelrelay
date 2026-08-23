@@ -5,7 +5,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
 
-import { sources, MODELS, canonicalizeModelId, getPreferredModelContext, getPreferredModelLabel, getScore, resolveAliasedModelId } from '../sources.js'
+import { sources, MODELS, PROVIDER_QUOTAS, canonicalizeModelId, getPreferredModelContext, getPreferredModelLabel, getScore, resolveAliasedModelId } from '../sources.js'
 import { TAG_VOCABULARY, MODEL_TAGS, getModelTags as getBuiltInModelTags } from '../tags.js'
 import {
   getAvg,
@@ -44,6 +44,7 @@ import {
   parseContextLimitFromError,
   parseMaxTokensCapFromError,
   parseEpochResetValue,
+  parseRateLimitResetValue,
   extractQuotaFailure,
   extractRateLimitResetMs,
   parseRetryDelayMs,
@@ -53,6 +54,7 @@ import {
   shouldKeepUpAfterFailedProbe,
   VERDICT_ORDER,
 } from '../lib/utils.js'
+import { normalizeProviderUsageReport, selectProviderUsageReport, serializeProviderUsage } from '../lib/provider-usage.js'
 import { buildOpenClawProviderConfig } from '../lib/onboard.js'
 import { normalizeMissingScoreId } from '../lib/score-fetcher.js'
 import {
@@ -325,6 +327,99 @@ describe('sources data integrity', () => {
       assert.equal(seen.has(key), false, `Duplicate model key found: ${key}`)
       seen.add(key)
     }
+  })
+})
+
+describe('PROVIDER_QUOTAS', () => {
+  const knownProviderKeys = new Set(Object.keys(sources));
+
+  it('only references known provider keys', () => {
+    for (const key of Object.keys(PROVIDER_QUOTAS)) {
+      assert.ok(knownProviderKeys.has(key), `PROVIDER_QUOTAS key "${key}" is not a known provider in sources`);
+    }
+  });
+
+  it('numeric entries have at least one numeric limit field', () => {
+    const fields = ['requestsPerDay', 'requestsPerMinute', 'requestsPerSecond', 'tokensPerDay', 'tokensPerMinute', 'creditsPerMonth'];
+    for (const [key, quota] of Object.entries(PROVIDER_QUOTAS)) {
+      const hasLimit = fields.some(f => quota[f] != null && Number.isFinite(quota[f]) && quota[f] > 0);
+      assert.ok(hasLimit || quota.source, `PROVIDER_QUOTAS entry "${key}" has no limit or source description`);
+    }
+  });
+
+  it('does not define unverified numeric quota estimates', () => {
+    const fields = ['requestsPerDay', 'requestsPerMinute', 'requestsPerSecond', 'tokensPerDay', 'tokensPerMinute', 'creditsPerMonth'];
+    for (const [key, quota] of Object.entries(PROVIDER_QUOTAS)) {
+      const hasNumericLimit = fields.some(f => quota[f] != null);
+      assert.equal(hasNumericLimit && quota.approximate === true, false, `Unverified numeric quota estimate found for "${key}"`);
+    }
+  });
+
+  it('covers every configured provider, including providers with opaque limits', () => {
+    for (const key of Object.keys(sources)) assert.ok(PROVIDER_QUOTAS[key], `Missing quota metadata for "${key}"`);
+  });
+
+  it('each entry has a source description', () => {
+    for (const [key, quota] of Object.entries(PROVIDER_QUOTAS)) {
+      assert.equal(typeof quota.source, 'string', `PROVIDER_QUOTAS entry "${key}" is missing a source description`);
+      assert.ok(quota.source.length > 0, `PROVIDER_QUOTAS entry "${key}" has an empty source description`);
+    }
+  });
+
+  it('covers all major providers with static models', () => {
+    // KiloCode, OpenCode Zen, Ollama, and openai-compatible are intentionally
+    // excluded — their limits are either unknown or user-specific.
+    const expected = ['nvidia', 'groq', 'cerebras', 'googleai', 'openrouter', 'codestral', 'scaleway', 'kiro'];
+    for (const key of expected) {
+      assert.ok(PROVIDER_QUOTAS[key], `Expected PROVIDER_QUOTAS to cover "${key}"`);
+    }
+  });
+})
+
+describe('provider usage reports', () => {
+  it('normalizes used, limit, remaining, scope, and reset without inventing limits', () => {
+    const [report] = normalizeProviderUsageReport('openrouter', {
+      usage: 2.5, limit: 10, model: 'demo', projectId: 'proj-1', reset: '2030-01-01T00:00:00Z',
+    }, { source: 'provider-api' })
+    assert.equal(report.used, 2.5)
+    assert.equal(report.remaining, 7.5)
+    assert.equal(report.limit, 10)
+    assert.equal(report.project, 'proj-1')
+    assert.equal(report.scope, 'account')
+    assert.equal(report.source, 'provider-api')
+    assert.ok(report.resetAt > Date.now())
+    assert.equal(normalizeProviderUsageReport('groq', { usage: 4 }).at(0).limit, null)
+  })
+
+  it('selects model reports before account reports and serializes a stable API shape', () => {
+    const reports = normalizeProviderUsageReport('googleai', [
+      { used: 1, limit: 5, scope: 'project' },
+      { used: 2, limit: 5, model: 'gemini-1.5-pro' },
+    ])
+    const selected = selectProviderUsageReport(reports, { providerKey: 'googleai', model: 'gemini-1.5-pro' })
+    assert.equal(selected.used, 2)
+    assert.equal(serializeProviderUsage([selected])[0].providerKey, 'googleai')
+  })
+
+  it('unwraps nested provider windows and preserves reset-only records', () => {
+    const reports = normalizeProviderUsageReport('googleai', {
+      data: { limit: 1500, remaining: 1499, resetAt: '2030-01-01T00:00:00Z', period: 'day' },
+    })
+    assert.equal(reports.length, 1)
+    assert.equal(reports[0].used, 1)
+    assert.equal(reports[0].window, 'day')
+    assert.ok(serializeProviderUsage(reports)[0].resetAt > Date.now())
+  })
+
+  it('retains reset-only and multiple-window reports', () => {
+    const reports = normalizeProviderUsageReport('groq', [
+      { resetAt: 1893456000000, scope: 'account', unit: 'requests' },
+      { used: 3, limit: 30, resetAt: 1893459600000, scope: 'account', unit: 'tokens' },
+    ])
+    assert.equal(reports.length, 2)
+    assert.equal(reports[0].used, null)
+    assert.equal(reports[0].resetAt, 1893456000000)
+    assert.equal(reports[1].remaining, 27)
   })
 })
 
@@ -3706,6 +3801,14 @@ describe('context window bounds (known + observed)', () => {
     assert.equal(parseEpochResetValue('abc'), null)
     assert.equal(parseEpochResetValue(null), null)
     assert.equal(parseEpochResetValue(''), null)
+  })
+
+  it('normalizes absolute and relative provider reset values', () => {
+    const now = 1_800_000_000_000
+    assert.equal(parseRateLimitResetValue('1800000123', now), 1_800000123000)
+    assert.equal(parseRateLimitResetValue('1800000123000', now), 1_800000123000)
+    assert.equal(parseRateLimitResetValue('37s', now), now + 37000)
+    assert.equal(parseRateLimitResetValue('Wed, 21 Oct 2030 07:28:00 GMT', now), Date.parse('Wed, 21 Oct 2030 07:28:00 GMT'))
   })
 
   it('parses relative retry delay durations', () => {

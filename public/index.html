@@ -232,7 +232,7 @@
     /* KPI Cards */
     .kpi-grid {
       display: grid;
-      grid-template-columns: 1fr 2fr;
+      grid-template-columns: 1fr;
       gap: 18px;
       margin-bottom: 40px;
     }
@@ -250,6 +250,10 @@
       overflow: hidden;
     }
 
+    .topology-card {
+      min-height: 340px;
+    }
+
     /* SVG Animations */
     .kpi-bg-svg {
       position: absolute;
@@ -258,8 +262,15 @@
       width: 100%;
       height: 100%;
       z-index: 0;
-      pointer-events: none;
       opacity: 0.6;
+    }
+
+    #bg-topology-svg {
+      pointer-events: all;
+      cursor: grab;
+    }
+    #bg-topology-svg.dragging {
+      cursor: grabbing;
     }
 
     .kpi-content {
@@ -268,23 +279,66 @@
       display: flex;
       flex-direction: column;
       height: 100%;
+      pointer-events: none;
     }
 
-    /* --- KPI background topology: model dots + provider dots + connecting lines --- */
-    .topo-model { fill: var(--text-muted); r: 2.5; opacity: 0.15; transition: all 1.5s ease-in-out; }
-    .topo-model.up { fill: var(--success); opacity: 0.7; filter: drop-shadow(0 0 3px var(--success)); }
-    .topo-model.dead { fill: var(--error); opacity: 0.55; }
-    .topo-model.paid { fill: #e6a817; opacity: 0.55; }
-    .topo-model.incompat { fill: var(--text-muted); opacity: 0.4; }
+    .kpi-content > * {
+      pointer-events: all;
+    }
 
-    .topo-provider { r: 3.5; opacity: 0.15; transition: all 1.5s ease-in-out; }
-    .topo-provider.green { fill: var(--success); opacity: 0.7; filter: drop-shadow(0 0 4px var(--success)); }
-    .topo-provider.amber { fill: var(--warning); opacity: 0.6; }
-    .topo-provider.red { fill: var(--error); opacity: 0.5; }
+    /* --- KPI background topology: spring-layout model shapes + provider nodes (favicon or monogram) + curved links --- */
+    .topo-model { fill: var(--text-muted); opacity: 0.2; transition: all 1.5s ease-in-out; pointer-events: all; cursor: default; }
+    .topo-model.up { fill: var(--success); opacity: 0.7; filter: drop-shadow(0 0 1.5px var(--success)); }
+    .topo-model.down { fill: var(--error); opacity: 0.4; }
+    .topo-model.disabled { fill: var(--text-muted); opacity: 0.2; }
+    .topo-model:hover { opacity: 0.95 !important; filter: drop-shadow(0 0 4px var(--accent)); }
+    .topo-model.best { fill: var(--accent); opacity: 0.9; filter: drop-shadow(0 0 6px var(--accent)); animation: topo-best-pulse 2s ease-in-out infinite; }
 
-    .topo-link { stroke: var(--text-muted); stroke-width: 0.5; opacity: 0.05; transition: all 1.5s ease-in-out; }
-    .topo-link.active { stroke: var(--success); stroke-width: 0.8; opacity: 0.3; }
-    .topo-link.warn { stroke: var(--warning); stroke-width: 0.6; opacity: 0.2; }
+    .topo-model-img { opacity: 1; transition: all 1.5s ease-in-out; pointer-events: all; cursor: default; }
+    .topo-model-img.best { opacity: 1; }
+
+    .topo-model-label { fill: var(--text-muted); font-size: 2.5px; font-family: system-ui, -apple-system, sans-serif; text-anchor: middle; opacity: 0.3; transition: all 1.5s ease-in-out; pointer-events: none; }
+    .topo-model-label.up { fill: var(--success); opacity: 0.55; }
+    .topo-model-label.down { fill: var(--error); opacity: 0.35; }
+    .topo-model-label.best { fill: var(--accent); opacity: 0.7; }
+
+    /* Highlight modes: when a provider is focused, dim everything else */
+    .topo-model.dimmed, .topo-model-img.dimmed, .topo-model-label.dimmed, .topo-provider-ring.dimmed, .topo-provider-img.dimmed, .topo-provider-mono.dimmed, .topo-link.dimmed, .topo-provider-label.dimmed {
+      opacity: 0.05 !important;
+      filter: none !important;
+    }
+    .topo-model-label.dimmed { opacity: 0.02 !important; }
+    .topo-link.dimmed { stroke-width: 0.3; opacity: 0.03 !important; }
+    .topo-provider-ring.dimmed { stroke-width: 0.8; }
+
+    @keyframes topo-best-pulse {
+      0%, 100% { filter: drop-shadow(0 0 4px var(--accent)); }
+      50% { filter: drop-shadow(0 0 10px var(--accent)); }
+    }
+
+    .topo-provider-ring { fill: none; stroke-width: 1.2; transition: all 1.5s ease-in-out; pointer-events: all; cursor: pointer; }
+    .topo-provider-ring.green { stroke: var(--success); opacity: 0.55; }
+    .topo-provider-ring.amber { stroke: var(--warning); opacity: 0.45; }
+    .topo-provider-ring.red { stroke: var(--error); opacity: 0.35; }
+    .topo-provider-ring:hover { stroke-width: 2.4; opacity: 0.9; filter: drop-shadow(0 0 4px currentColor); }
+
+    .topo-provider-img { opacity: 1; transition: all 1.5s ease-in-out; pointer-events: all; cursor: pointer; }
+
+    .topo-provider-mono { opacity: 0.4; transition: all 1.5s ease-in-out; pointer-events: all; cursor: pointer; }
+    .topo-provider-mono.green { fill: var(--success); opacity: 0.6; }
+    .topo-provider-mono.amber { fill: var(--warning); opacity: 0.5; }
+    .topo-provider-mono.red { fill: var(--error); opacity: 0.4; }
+    .topo-provider-mono:hover { opacity: 0.85; }
+
+    .topo-link { fill: none; stroke: var(--text-muted); stroke-width: 0.8; opacity: 0.12; transition: all 1.5s ease-in-out; }
+    .topo-link.active { stroke: var(--success); stroke-width: 1.4; opacity: 0.45; }
+    .topo-link.warn { stroke: var(--warning); stroke-width: 1.0; opacity: 0.30; }
+
+    .topo-provider-label { fill: var(--text); font-size: 4px; font-family: system-ui, -apple-system, sans-serif; text-anchor: middle; opacity: 0.45; transition: all 1.5s ease-in-out; pointer-events: none; }
+
+    .topo-model-label { fill: var(--text-muted); font-size: 2.5px; font-family: system-ui, -apple-system, sans-serif; text-anchor: middle; opacity: 0.3; transition: all 1.5s ease-in-out; pointer-events: none; }
+    .topo-model-label.up { fill: var(--success); opacity: 0.5; }
+    .topo-model-label.down { fill: var(--error); opacity: 0.35; }
 
     .current-core {
       fill: none;
@@ -989,13 +1043,13 @@
       vertical-align: middle;
     }
 
-    .table-wrap th:nth-child(1),  .table-wrap td:nth-child(1)  { width: 26%; }
+    .table-wrap th:nth-child(1),  .table-wrap td:nth-child(1)  { width: 25%; }
     .table-wrap th:nth-child(2),  .table-wrap td:nth-child(2)  { width: 5%; }
-    .table-wrap th:nth-child(3),  .table-wrap td:nth-child(3)  { width: 8%; }
-    .table-wrap th:nth-child(4),  .table-wrap td:nth-child(4)  { width: 8%; }
-    .table-wrap th:nth-child(5),  .table-wrap td:nth-child(5)  { width: 6%; }
-    .table-wrap th:nth-child(6),  .table-wrap td:nth-child(6)  { width: 6%; }
-    .table-wrap th:nth-child(7),  .table-wrap td:nth-child(7)  { width: 9%; }
+    .table-wrap th:nth-child(3),  .table-wrap td:nth-child(3)  { width: 7%; }
+    .table-wrap th:nth-child(4),  .table-wrap td:nth-child(4)  { width: 7%; }
+    .table-wrap th:nth-child(5),  .table-wrap td:nth-child(5)  { width: 5%; }
+    .table-wrap th:nth-child(6),  .table-wrap td:nth-child(6)  { width: 5%; }
+    .table-wrap th:nth-child(7),  .table-wrap td:nth-child(7)  { width: 14%; }
     .table-wrap th:nth-child(8),  .table-wrap td:nth-child(8)  { width: 32%; }
 
     /* Model/name column: never truncate names — write them out in full, wrapping */
@@ -1006,6 +1060,51 @@
       white-space: normal;
       min-width: 0;
       flex: 0 1 auto;
+    }
+
+    /* Quota and response values are intentionally allowed to wrap. Without this,
+       long provider errors and multi-dimensional limits are clipped by the fixed
+       table layout or force awkward row overflow. */
+    .table-wrap th:nth-child(7),
+    .table-wrap td:nth-child(7),
+    .table-wrap th:nth-child(8),
+    .table-wrap td:nth-child(8) {
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      line-height: 1.35;
+    }
+
+    .table-wrap td:nth-child(7) > div,
+    .table-wrap td:nth-child(8) > div {
+      min-width: 0;
+      max-width: 100%;
+    }
+
+    .quota-report-list {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .quota-report-list > div {
+      min-width: 0;
+      font-size: 0.7rem;
+      line-height: 1.3;
+    }
+
+    .quota-meter {
+      height: 3px;
+      margin-top: 2px;
+      border-radius: 3px;
+      background: var(--border);
+      overflow: hidden;
+    }
+
+    .quota-meter > div {
+      height: 100%;
+      border-radius: inherit;
+      transition: width 1.5s;
     }
 
     @media (max-width: 640px) {
@@ -1785,26 +1884,10 @@
     </div>
 
     <div class="kpi-grid">
-      <div class="kpi-card">
-        <svg class="kpi-bg-svg" id="bg-current-svg" preserveAspectRatio="xMidYMid slice"></svg>
-        <div class="kpi-content">
-          <div class="kpi-label">
-            Current Model
-            <svg class="signal-icon" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="10" />
-            </svg>
-          </div>
-          <div class="kpi-value" id="kpi-best">Calculating...</div>
-          <div style="margin-top:6px; min-height:20px;">
-            <span class="pin-badge" id="pin-badge" style="display:none; cursor:pointer;" onclick="pinModel('')"
-              title="Click to unpin">📌 Pinned ×</span>
-          </div>
-        </div>
-      </div>
-      <div class="kpi-card">
+      <div class="kpi-card topology-card">
         <svg class="kpi-bg-svg" id="bg-topology-svg" preserveAspectRatio="xMidYMid slice"></svg>
         <div class="kpi-content">
-          <div style="display:flex; gap:24px;">
+          <div style="display:flex; gap:24px; align-items:flex-start;">
             <div class="kpi-label">
               Models Online
               <svg class="signal-icon" viewBox="0 0 24 24">
@@ -1818,6 +1901,17 @@
                 <circle cx="12" cy="12" r="10" />
               </svg>
               <span class="kpi-value" id="kpi-providers" style="font-size:1.2rem; margin-left:8px;">0</span>
+            </div>
+            <div style="margin-left:auto; display:flex; align-items:center; gap:12px;">
+              <div style="display:flex; align-items:center; gap:6px;">
+                <svg class="signal-icon" viewBox="0 0 24 24" style="width:10px;height:10px;">
+                  <circle cx="12" cy="12" r="10" />
+                </svg>
+                <span class="kpi-label" style="font-size:0.72rem;">Current</span>
+                <span class="kpi-value" id="kpi-best" style="font-size:0.85rem;">Calculating...</span>
+              </div>
+              <span class="pin-badge" id="pin-badge" style="display:none; cursor:pointer;" onclick="pinModel('')"
+                title="Click to unpin">📌 Pinned ×</span>
             </div>
           </div>
         </div>
@@ -2341,15 +2435,32 @@
         if (!metaLoaded) {
           loadMeta();
         }
-        const [modelsRes, configRes] = await Promise.all([
+        const [modelsRes, configRes, usageRes] = await Promise.all([
           fetch('/api/models'),
           fetch('/api/config'),
+          fetch('/api/usage').catch(() => null),
         ]);
         const data = await modelsRes.json();
         const providers = await configRes.json();
+        let usageReports = [];
+        if (usageRes && usageRes.ok) {
+          try {
+            const usageData = await usageRes.json();
+            usageReports = Array.isArray(usageData.reports) ? usageData.reports : [];
+          } catch {
+            usageReports = [];
+          }
+        }
 
         // Calculate QoS for each model
         allModels = data.models.map(m => {
+          const apiUsage = usageReports.filter(report =>
+            report && report.providerKey === m.providerKey && (!report.model || report.model === m.modelId)
+          );
+          if (apiUsage.length > 0) {
+            m.providerUsages = apiUsage;
+            m.providerUsage = apiUsage.find(report => report.model === m.modelId) || apiUsage[0];
+          }
           let isRateLimited = false;
           let rateLimitResetMs = 0;
           if (m.rateLimit) {
@@ -2623,138 +2734,719 @@
       document.getElementById('kpi-active').textContent = upModels.length;
       document.getElementById('kpi-providers').textContent = allProviders.size;
 
-      drawBipartiteTopology(models);
-
       const bestModel = bestModelId ? models.find(m => m.modelId === bestModelId) : null;
       document.getElementById('kpi-best').textContent = bestModel ? bestModel.label : 'None Online';
-      drawCurrentModelAnimation(!!bestModel);
+
+      drawBipartiteTopology(models, bestModel);
     }
 
-    // Bipartite topology: model dots on the left, provider dots on the right,
-    // lines from each model to each provider that hosts it. Colours encode status.
-    function drawBipartiteTopology(models) {
+    // Spring-layout topology: provider nodes (favicon or monogram + ring + name)
+    // anchor clusters of model circles with tiny labels. Drag to pan, scroll to
+    // zoom, click a provider to highlight its cluster, dblclick to reset.
+    // The currently selected/best model pulses blue. Spread fits the card laterally.
+    function drawBipartiteTopology(models, bestModel = null) {
       const svg = document.getElementById('bg-topology-svg');
       if (!svg) return;
 
-      // Build unique provider list (stable order) and a provider→index map
-      const providers = [...new Set(models.map(m => m.providerKey))];
-      const provIndex = new Map(providers.map((p, i) => [p, i]));
+      // ---- Filter to primary-table models only ----
+      const primaryModels = models.filter(m => {
+        if (m.lastResponse && m.lastResponse.paymentRequired === true) return false;
+        if ((m.lastResponse && m.lastResponse.dead === true) || m.status === 'dead') return false;
+        if ((m.lastResponse && m.lastResponse.incompatible === true) || m.status === 'incompatible') return false;
+        if (m.status === 'noauth') return false;
+        return true;
+      });
+      // Drop providers that have zero valid models
+      const providerValidModelCount = new Map();
+      for (const m of primaryModels) {
+        providerValidModelCount.set(m.providerKey, (providerValidModelCount.get(m.providerKey) || 0) + 1);
+      }
+      const activeProviders = new Set([...providerValidModelCount.entries()].filter(([, c]) => c > 0).map(([k]) => k));
 
-      // Group models by provider for line drawing
-      const byProv = new Map();
-      for (const m of models) {
-        const pk = m.providerKey;
-        if (!byProv.has(pk)) byProv.set(pk, []);
-        byProv.get(pk).push(m);
+      const liveProviders = [...new Set(primaryModels.map(m => m.providerKey))];
+      const numProvs = liveProviders.length;
+
+      // Always return a clean display name — never raw modelId with '/' or internal names
+      function modelDisplayName(m) {
+        if (m.label && m.label.trim()) return m.label.trim();
+        // Fallback: strip provider prefixes from modelId
+        return (m.modelId || '').replace(/^[a-z0-9_-]+\//i, '').replace(/[-_](free|latest|snapshot|preview)$/i, '').trim() || m.modelId || 'Unknown';
       }
 
-      const numModels = Math.min(models.length, 150);
-      const numProvs = providers.length;
-      const svgHash = `${numModels}:${numProvs}`;
+      // ---- Deduplicate models using the same canonical key as the main table ----
+      // This ensures the network plot shows exactly the same set of model groups.
+      const modelByGroup = new Map();
+      for (const m of primaryModels) {
+        const c = canonicalizeClientModelId(m.modelId);
+        const groupKey = (c.unprefixed || m.modelId || '').toLowerCase();
+        if (!modelByGroup.has(groupKey)) {
+          modelByGroup.set(groupKey, { ...m, _groupKey: groupKey, _providers: [{ key: m.providerKey, model: m }] });
+        } else {
+          modelByGroup.get(groupKey)._providers.push({ key: m.providerKey, model: m });
+        }
+      }
+      const uniqueModels = [...modelByGroup.values()];
+      const numModels = Math.min(uniqueModels.length, 120);
+
+      // Model-family → favicon domain (model's own brand, not the provider hosting it)
+      const MODEL_DOMAINS = {
+        'deepseek': 'deepseek.com', 'gemma': 'ai.google.dev', 'qwen': 'qwen.ai',
+        'llama': 'meta.com', 'mistral': 'mistral.ai', 'ministral': 'mistral.ai',
+        'codestral': 'mistral.ai', 'nemotron': 'nvidia.com', 'gpt-oss': 'openai.com',
+        'glm': 'chatglm.cn', 'minimax': 'minimax.chat', 'moonshot': 'moonshot.ai',
+        'kimi': 'moonshot.ai', 'glm': 'chatglm.cn', 'trinity': 'arcee.ai',
+        'laguna': 'poolside.ai', 'step': 'stepfun.com', 'dola': 'seed.com',
+        'hy3': 'hygen.ai', 'ring': 'inclusioncloud.com', 'ling': 'inclusioncloud.com',
+        'mimo': 'xiaomi.com', 'devstral': 'mistral.ai', 'cogito': 'deepinfra.com',
+        'glm': 'zhipuai.cn', 'kimi-k2': 'moonshot.ai', 'bytedance': 'bytedance.com',
+        'dola-seed': 'bytedance.com', 'inclusionai': 'inclusioncloud.com',
+        'openai': 'openai.com', 'xai': 'x.ai', 'phi': 'microsoft.com',
+        'command': 'cohere.com', 'north': 'cohere.com', 'aria': 'ai21.com',
+        'amazon': 'aws.amazon.com', 'nova': 'aws.amazon.com',
+      };
+      function getModelDomain(m) {
+        const raw = (m.modelId || m.label || '').toLowerCase();
+        for (const [prefix, domain] of Object.entries(MODEL_DOMAINS)) {
+          if (raw.includes(prefix)) return domain;
+        }
+        return '';
+      }
+
+      // Favicon domain map & friendly display names
+      const PROVIDER_DOMAINS = {
+        'groq': 'groq.com', 'googleai': 'ai.google.dev', 'cerebras': 'cerebras.ai',
+        'nvidia': 'nvidia.com', 'openrouter': 'openrouter.ai', 'codestral': 'mistral.ai',
+        'scaleway': 'scaleway.com', 'kilocode': 'kilocode.com', 'opencode': 'opencode.ai',
+        'ollama': 'ollama.com', 'kiro': 'kiro.dev',
+      };
+      const PROVIDER_NAMES = {
+        'groq': 'Groq', 'googleai': 'Google', 'cerebras': 'Cerebras',
+        'nvidia': 'NVIDIA', 'openrouter': 'OpenRouter', 'codestral': 'Codestral',
+        'scaleway': 'Scaleway', 'kilocode': 'KiloCode', 'opencode': 'OpenCode',
+        'ollama': 'Ollama', 'kiro': 'Kiro',
+      };
+
+      // Fit the viewBox to the card's actual pixel size.
+      const card = svg.parentElement;
+      const W = card ? card.clientWidth : 600;
+      const H = card ? card.clientHeight : 140;
+      const cx = W / 2, cy = H / 2;
+      const provR = Math.min(7.5, Math.max(5.5, Math.min(W, H) * 0.05));
+      const faviconSz = Math.round(provR * 1.6);
+      const clipR = Math.round(faviconSz / 2);
+
+      const svgHash = `${numModels}:${numProvs}:${W}:${H}`;
       if (svg.dataset.hash !== svgHash) {
-        svg.setAttribute('viewBox', '0 0 300 120');
+        svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
         svg.innerHTML = '';
         svg.dataset.hash = svgHash;
+        svg._topoZoom = 1;
+        svg._topoPanX = 0;
+        svg._topoPanY = 0;
+        svg._topoHighlight = null;
+        svg._topoDragging = false;
 
-        // Deterministic layout: model column at x≈60, provider column at x≈240
-        const modelColX = 60;
-        const provColX = 240;
-        const topPad = 12;
-        const botPad = 12;
-        const usableH = 120 - topPad - botPad;
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('id', 'topo-layer');
+        svg.appendChild(g);
 
-        // Place model dots evenly in the left column, cycling provider order for spread
+        // --- Build nodes (models first, then providers) ---
+        const nodes = [];
+        let seed = 0;
+        for (let i = 0; i < liveProviders.length; i++) {
+          for (let j = 0; j < liveProviders[i].length; j++) seed = ((seed << 5) - seed + liveProviders[i].charCodeAt(j)) | 0;
+        }
+        function lcg() { seed = (seed * 1664525 + 1013904223) | 0; return (seed >>> 0) / 4294967296; }
+
+        // Provider nodes on a wide ellipse
+        const rProvX = Math.min(W * 0.42, 8 + numProvs * 11);
+        const rProvY = Math.min(H * 0.32, 6 + numProvs * 6);
+        const provNodes = [];
+        for (let i = 0; i < numProvs; i++) {
+          const angle = (2 * Math.PI * i) / numProvs + (lcg() - 0.5) * 0.25;
+          provNodes.push({
+            id: `p:${liveProviders[i]}`, type: 'provider',
+            providerKey: liveProviders[i],
+            domain: PROVIDER_DOMAINS[liveProviders[i]] || '',
+            x: cx + rProvX * Math.cos(angle),
+            y: cy + rProvY * Math.sin(angle),
+            mass: 3.5
+          });
+        }
+
+        // One node per unique model (models first in array for index lookups)
         for (let i = 0; i < numModels; i++) {
-          const m = models[i];
-          const y = topPad + ((i + 0.5) / numModels) * usableH;
-          const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-          c.setAttribute('cx', modelColX);
-          c.setAttribute('cy', y);
-          c.setAttribute('class', 'topo-model');
-          c.dataset.midx = i;
-          svg.appendChild(c);
+          const um = uniqueModels[i];
+          // Pick best provider (one that's up, with fastest ping)
+          const bestProv = um._providers.find(p => p.model.status === 'up') || um._providers[0];
+          const anchorProv = provNodes.find(p => p.providerKey === bestProv.key);
+          const angle = lcg() * 2 * Math.PI;
+          const dist = 5 + lcg() * 14;
+          nodes.push({
+            id: `m:${um.modelId}`, type: 'model',
+            model: um,
+            providers: um._providers.map(p => p.key),
+            providerKey: bestProv.key,
+            x: (anchorProv ? anchorProv.x : cx) + Math.cos(angle) * dist,
+            y: (anchorProv ? anchorProv.y : cy) + Math.sin(angle) * dist,
+            mass: 1.5
+          });
+        }
+        for (const pn of provNodes) nodes.push(pn);
 
-          // Draw a line to each provider that hosts this model
-          const provs = byProv.get(m.providerKey) ? provIndex.get(m.providerKey) : null;
-          if (provs != null) {
-            const py = topPad + ((provs + 0.5) / numProvs) * usableH;
-            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            line.setAttribute('x1', modelColX + 3);
-            line.setAttribute('y1', y);
-            line.setAttribute('x2', provColX - 4);
-            line.setAttribute('y2', py);
-            line.setAttribute('class', 'topo-link');
-            line.dataset.from = i;
-            svg.appendChild(line);
+        // --- Edges: each model connects to ALL providers that serve it ---
+        const edges = [];
+        for (const node of nodes) {
+          if (node.type !== 'model') continue;
+          for (const pk of node.providers) {
+            const prov = provNodes.find(p => p.providerKey === pk);
+            if (prov) edges.push({ from: node, to: prov, providerKey: pk });
           }
         }
 
-        // Place provider dots in the right column
-        for (let i = 0; i < numProvs; i++) {
-          const y = topPad + ((i + 0.5) / numProvs) * usableH;
-          const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-          c.setAttribute('cx', provColX);
-          c.setAttribute('cy', y);
-          c.setAttribute('class', 'topo-provider');
-          c.dataset.pidx = i;
-          svg.appendChild(c);
+        // --- Compute target positions via force simulation, then animate from start → target ---
+        const SIM_ITERATIONS = 30, repulsionStrength = 500, springK = 0.04, springLen = 17;
+        const margin = provR + 8;
+        // Save initial positions
+        const startX = nodes.map(n => n.x), startY = nodes.map(n => n.y);
+        // Run simulation to find target positions
+        for (let iter = 0; iter < SIM_ITERATIONS; iter++) {
+          const forces = nodes.map(() => ({ fx: 0, fy: 0 }));
+          for (let a = 0; a < nodes.length; a++) {
+            for (let b = a + 1; b < nodes.length; b++) {
+              let dx = nodes[a].x - nodes[b].x, dy = nodes[a].y - nodes[b].y;
+              let dist = Math.sqrt(dx * dx + dy * dy);
+              if (dist < 0.5) { dist = 0.5; dx = lcg() - 0.5; dy = lcg() - 0.5; }
+              const force = repulsionStrength / (dist * dist);
+              forces[a].fx += (dx / dist) * force / nodes[a].mass;
+              forces[a].fy += (dy / dist) * force / nodes[a].mass;
+              forces[b].fx -= (dx / dist) * force / nodes[b].mass;
+              forces[b].fy -= (dy / dist) * force / nodes[b].mass;
+            }
+          }
+          for (const e of edges) {
+            let dx = e.to.x - e.from.x, dy = e.to.y - e.from.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < 0.5) continue;
+            const force = springK * (dist - springLen);
+            const fx = (dx / dist) * force, fy = (dy / dist) * force;
+            forces[nodes.indexOf(e.from)].fx += fx / e.from.mass;
+            forces[nodes.indexOf(e.from)].fy += fy / e.from.mass;
+            forces[nodes.indexOf(e.to)].fx -= fx / e.to.mass;
+            forces[nodes.indexOf(e.to)].fy -= fy / e.to.mass;
+          }
+          for (let i = 0; i < nodes.length; i++) {
+            forces[i].fx += (cx - nodes[i].x) * 0.005 / nodes[i].mass;
+            forces[i].fy += (cy - nodes[i].y) * 0.005 / nodes[i].mass;
+          }
+          for (let i = 0; i < nodes.length; i++) {
+            const damp = 0.55;
+            nodes[i].x += forces[i].fx * damp;
+            nodes[i].y += forces[i].fy * damp;
+            nodes[i].x = Math.max(margin, Math.min(W - margin, nodes[i].x));
+            nodes[i].y = Math.max(margin, Math.min(H - margin, nodes[i].y));
+          }
         }
+        // Capture settled target positions
+        const targetX = nodes.map(n => n.x), targetY = nodes.map(n => n.y);
+        // Reset to initial positions for the animation start
+        nodes.forEach((n, i) => { n.x = startX[i]; n.y = startY[i]; });
+
+        // --- Draw edges ---
+        for (const e of edges) {
+          const mx = (e.from.x + e.to.x) / 2, my = (e.from.y + e.to.y) / 2;
+          const dx = e.to.x - e.from.x, dy = e.to.y - e.from.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          let cxOff = 0, cyOff = 0;
+          if (dist > 2) {
+            const curvature = Math.min(5, dist * 0.20);
+            cxOff = (-dy / dist) * curvature;
+            cyOff = (dx / dist) * curvature;
+          }
+          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          path.setAttribute('d', `M${e.from.x.toFixed(1)} ${e.from.y.toFixed(1)} Q${(mx + cxOff).toFixed(1)} ${(my + cyOff).toFixed(1)} ${e.to.x.toFixed(1)} ${e.to.y.toFixed(1)}`);
+          path.setAttribute('class', 'topo-link');
+          path.dataset.from = nodes.indexOf(e.from);
+          path.dataset.to = nodes.indexOf(e.to);
+          path.dataset.pkey = e.providerKey;
+          g.appendChild(path);
+        }
+
+        // --- Draw model nodes (circle + model favicon + tiny name label) ---
+        for (const node of nodes) {
+          if (node.type !== 'model') continue;
+          const m = node.model;
+          const px = node.x.toFixed(1), py = node.y.toFixed(1);
+          // 1. Background circle (status colour)
+          const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          el.setAttribute('cx', px); el.setAttribute('cy', py); el.setAttribute('r', 5);
+          el.setAttribute('class', 'topo-model');
+          el.dataset.midx = nodes.indexOf(node);
+          const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+          title.textContent = `${modelDisplayName(m)} · ${node.providers.map(p => PROVIDER_NAMES[p] || p).join(', ')}`;
+          el.appendChild(title);
+          g.appendChild(el);
+          // 2. Model-specific favicon (the model's own brand icon)
+          const modelDom = getModelDomain(m);
+          if (modelDom) {
+            const mcId = `mclip-${nodes.indexOf(node)}`;
+            const defs = g.querySelector('defs') || (() => { const d = document.createElementNS('http://www.w3.org/2000/svg', 'defs'); g.insertBefore(d, g.firstChild); return d; })();
+            const cp = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+            cp.setAttribute('id', mcId);
+            const cc = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            cc.setAttribute('cx', px); cc.setAttribute('cy', py); cc.setAttribute('r', 4.5);
+            cp.appendChild(cc); defs.appendChild(cp);
+            const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+            img.setAttribute('x', (node.x - 4).toFixed(1)); img.setAttribute('y', (node.y - 4).toFixed(1));
+            img.setAttribute('width', '8'); img.setAttribute('height', '8');
+            img.setAttribute('href', `https://www.google.com/s2/favicons?domain=${modelDom}&sz=32`);
+            img.setAttribute('clip-path', `url(#${mcId})`);
+            img.setAttribute('class', 'topo-model-img');
+            img.dataset.midx = nodes.indexOf(node);
+            const imgTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            imgTitle.textContent = modelDisplayName(m);
+            img.appendChild(imgTitle);
+            g.appendChild(img);
+          }
+          // 3. Tiny name label below (use display name)
+          const shortName = modelDisplayName(m);
+          const trunc = shortName.length > 12 ? shortName.slice(0, 11) + '…' : shortName;
+          if (trunc) {
+            const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            lbl.setAttribute('x', px); lbl.setAttribute('y', (node.y + 9).toFixed(1));
+            lbl.setAttribute('class', 'topo-model-label');
+            lbl.dataset.midx = nodes.indexOf(node);
+            lbl.textContent = trunc;
+            g.appendChild(lbl);
+          }
+        }
+
+        // --- Draw provider nodes (ring + favicon or monogram + name) ---
+        for (const node of provNodes) {
+          const pk = node.providerKey, hasDomain = !!node.domain;
+          // Status ring
+          const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          ring.setAttribute('cx', node.x.toFixed(1));
+          ring.setAttribute('cy', node.y.toFixed(1));
+          ring.setAttribute('r', provR);
+          ring.setAttribute('class', 'topo-provider-ring');
+          ring.dataset.pkey = pk;
+          const ringTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+          ringTitle.textContent = PROVIDER_NAMES[pk] || pk;
+          ring.appendChild(ringTitle);
+          g.appendChild(ring);
+
+          if (hasDomain) {
+            const clipId = `topo-clip-${pk}-${numModels}`;
+            const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+            const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+            clipPath.setAttribute('id', clipId);
+            const clipCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            clipCircle.setAttribute('cx', node.x.toFixed(1));
+            clipCircle.setAttribute('cy', node.y.toFixed(1));
+            clipCircle.setAttribute('r', clipR);
+            clipPath.appendChild(clipCircle);
+            defs.appendChild(clipPath);
+            g.insertBefore(defs, g.firstChild);
+
+            const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+            img.setAttribute('x', (node.x - clipR).toFixed(1));
+            img.setAttribute('y', (node.y - clipR).toFixed(1));
+            img.setAttribute('width', faviconSz);
+            img.setAttribute('height', faviconSz);
+            img.setAttribute('href', `https://www.google.com/s2/favicons?domain=${node.domain}&sz=64`);
+            img.setAttribute('clip-path', `url(#${clipId})`);
+            img.setAttribute('class', 'topo-provider-img');
+            img.dataset.pkey = pk;
+            const imgTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            imgTitle.textContent = PROVIDER_NAMES[pk] || pk;
+            img.appendChild(imgTitle);
+            img.addEventListener('error', () => {
+              img.style.display = 'none';
+              const mono = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+              mono.setAttribute('cx', node.x.toFixed(1));
+              mono.setAttribute('cy', node.y.toFixed(1));
+              mono.setAttribute('r', clipR);
+              mono.setAttribute('class', 'topo-provider-mono');
+              mono.dataset.pkey = pk;
+              const mTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+              mTitle.textContent = PROVIDER_NAMES[pk] || pk;
+              mono.appendChild(mTitle);
+              img.parentNode.insertBefore(mono, img.nextSibling);
+            });
+            g.appendChild(img);
+          } else {
+            const mono = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            mono.setAttribute('cx', node.x.toFixed(1));
+            mono.setAttribute('cy', node.y.toFixed(1));
+            mono.setAttribute('r', clipR);
+            mono.setAttribute('class', 'topo-provider-mono');
+            mono.dataset.pkey = pk;
+            const mTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            mTitle.textContent = PROVIDER_NAMES[pk] || pk;
+            mono.appendChild(mTitle);
+            g.appendChild(mono);
+          }
+
+          // Provider name label below the ring
+          const displayName = PROVIDER_NAMES[pk] || pk;
+          const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          label.setAttribute('x', node.x.toFixed(1));
+          label.setAttribute('y', (node.y + provR + 8).toFixed(1));
+          label.setAttribute('class', 'topo-provider-label');
+          label.setAttribute('data-pkey', pk);
+          label.dataset.pkey = pk;
+          label.textContent = displayName;
+          g.appendChild(label);
+        }
+
+        // ---- Attach pan/zoom/highlight interactivity ----
+        attachTopologyInteractivity(svg, g, W, H, liveProviders, primaryModels, numModels);
+        const tz = svg._topoZoom || 1;
+        const tpx = svg._topoPanX || 0;
+        const tpy = svg._topoPanY || 0;
+        g.setAttribute('transform', `translate(${tpx},${tpy}) scale(${tz})`);
+
+        // ---- Kick off spring animation ----
+        startTopologyAnimation(svg, g, nodes, edges, provNodes, startX, startY, targetX, targetY, provR);
       }
 
-      // Update colours each refresh based on live status
-      const modelDots = svg.querySelectorAll('.topo-model');
-      const provDots = svg.querySelectorAll('.topo-provider');
-      const links = svg.querySelectorAll('.topo-link');
+      // ---- Refresh colours, labels, and tooltips each render ----
+      const g = svg.querySelector('#topo-layer');
+      if (!g) return;
+      const modelEls = g.querySelectorAll('.topo-model');
+      const links = g.querySelectorAll('.topo-link');
+      const rings = g.querySelectorAll('.topo-provider-ring');
+      const imgs = g.querySelectorAll('.topo-provider-img');
+      const monos = g.querySelectorAll('.topo-provider-mono');
 
-      // Classify each model dot
-      modelDots.forEach(dot => {
-        const i = Number(dot.dataset.midx || 0);
-        const m = models[i] || models[0];
-        if (!m) return;
-        const struck = (m.lastResponse && m.lastResponse.paymentRequired === true)
-          || (m.lastResponse && m.lastResponse.dead === true)
-          || m.status === 'dead'
-          || (m.lastResponse && m.lastResponse.incompatible === true)
-          || m.status === 'incompatible';
-        const dead = (m.lastResponse && m.lastResponse.dead === true) || m.status === 'dead';
-        const paid = m.lastResponse && m.lastResponse.paymentRequired === true;
-        const incompat = (m.lastResponse && m.lastResponse.incompatible === true) || m.status === 'incompatible';
-        const up = m.status === 'up';
-        let cls = 'topo-model';
-        if (up) cls += ' up';
-        else if (dead) cls += ' dead';
-        else if (paid) cls += ' paid';
-        else if (incompat) cls += ' incompat';
-        dot.setAttribute('class', cls);
-      });
-
-      // Classify each provider dot: green (all up), amber (some up), red (none up)
-      provDots.forEach(dot => {
-        const pi = Number(dot.dataset.pidx || 0);
-        const pk = providers[pi];
-        if (!pk) return;
-        const provModels = models.filter(m => m.providerKey === pk);
+      const providerHealth = {};
+      for (const pk of liveProviders) {
+        const provModels = primaryModels.filter(m => m.providerKey === pk);
         const upCount = provModels.filter(m => m.status === 'up').length;
-        let cls = 'topo-provider';
-        if (upCount === provModels.length && upCount > 0) cls += ' green';
-        else if (upCount > 0) cls += ' amber';
-        else cls += ' red';
-        dot.setAttribute('class', cls);
+        providerHealth[pk] = { upCount, total: provModels.length };
+      }
+
+      // Model status: best status across all providers for this unique model
+      function modelStatusCls(um, isBest) {
+        const anyUp = um._providers.some(p => p.model.status === 'up');
+        const anyDown = um._providers.some(p => p.model.status === 'down' || p.model.status === 'noauth');
+        return `${anyUp ? ' up' : (anyDown ? ' down' : ' disabled')}${isBest ? ' best' : ''}`;
+      }
+      function isModelBest(um) {
+        return bestModel && um._providers.some(p => p.model.modelId === bestModel.modelId && p.model.providerKey === bestModel.providerKey);
+      }
+
+      modelEls.forEach(el => {
+        const mi = Number(el.dataset.midx || 0);
+        if (mi >= 0 && mi < numModels) {
+          const um = uniqueModels[mi];
+          if (!um) { el.setAttribute('class', 'topo-model'); return; }
+          const isBest = isModelBest(um);
+          el.setAttribute('class', `topo-model${modelStatusCls(um, isBest)}`);
+          const title = el.querySelector('title');
+          if (title) title.textContent = `${modelDisplayName(um)} · ${um._providers.map(p => PROVIDER_NAMES[p.key] || p.key).join(', ')}`;
+        }
       });
 
-      // Classify each link: active if model up, warn if provider partially up, else dim
+      // Refresh model favicon images
+      g.querySelectorAll('.topo-model-img').forEach(el => {
+        const mi = Number(el.dataset.midx || 0);
+        if (mi >= 0 && mi < numModels) {
+          const um = uniqueModels[mi];
+          if (!um) return;
+          const isBest = isModelBest(um);
+          el.setAttribute('class', `topo-model-img${isBest ? ' best' : ''}`);
+          const title = el.querySelector('title');
+          if (title) title.textContent = modelDisplayName(um);
+        }
+      });
+
+      // Refresh model labels
+      g.querySelectorAll('.topo-model-label').forEach(el => {
+        const mi = Number(el.dataset.midx || 0);
+        if (mi >= 0 && mi < numModels) {
+          const um = uniqueModels[mi];
+          if (!um) return;
+          const isBest = isModelBest(um);
+          el.setAttribute('class', `topo-model-label${modelStatusCls(um, isBest)}`);
+        }
+      });
+
       links.forEach(line => {
         const mi = Number(line.dataset.from || 0);
-        const m = models[mi];
-        if (!m) return;
-        const up = m.status === 'up';
-        const provModels = models.filter(pm => pm.providerKey === m.providerKey);
-        const anyUp = provModels.some(pm => pm.status === 'up');
-        let cls = 'topo-link';
-        if (up) cls += ' active';
-        else if (anyUp) cls += ' warn';
-        line.setAttribute('class', cls);
+        if (mi >= 0 && mi < numModels) {
+          const um = uniqueModels[mi];
+          if (!um) { line.setAttribute('class', 'topo-link'); return; }
+          const pk = line.dataset.pkey;
+          const anyUp = providerHealth[pk] && providerHealth[pk].upCount > 0;
+          const modelUp = um._providers.some(p => p.key === pk && p.model.status === 'up');
+          line.setAttribute('class', `topo-link${modelUp ? ' active' : (anyUp ? ' warn' : '')}`);
+        }
       });
+
+      rings.forEach(ring => {
+        const pk = ring.dataset.pkey;
+        const h = providerHealth[pk];
+        if (!h) return;
+        ring.setAttribute('class', `topo-provider-ring${h.upCount === h.total && h.total > 0 ? ' green' : (h.upCount > 0 ? ' amber' : ' red')}`);
+        const title = ring.querySelector('title');
+        if (title) title.textContent = `${PROVIDER_NAMES[pk] || pk} · ${h.upCount}/${h.total} up`;
+      });
+
+      imgs.forEach(img => {
+        const pk = img.dataset.pkey;
+        const h = providerHealth[pk];
+        if (!h) return;
+        const title = img.querySelector('title');
+        if (title) title.textContent = `${PROVIDER_NAMES[pk] || pk} · ${h.upCount}/${h.total} up`;
+      });
+
+      monos.forEach(mono => {
+        const pk = mono.dataset.pkey;
+        const h = providerHealth[pk];
+        if (!h) return;
+        mono.setAttribute('class', `topo-provider-mono${h.upCount === h.total && h.total > 0 ? ' green' : (h.upCount > 0 ? ' amber' : ' red')}`);
+        const title = mono.querySelector('title');
+        if (title) title.textContent = `${PROVIDER_NAMES[pk] || pk} · ${h.upCount}/${h.total} up`;
+      });
+
+      // Re-apply highlight dimming
+      applyTopologyHighlight(svg, g);
+    }
+
+    // ---- Interactivity: pan, zoom, click/dblclick ----
+    function attachTopologyInteractivity(svg, _g, W, H, liveProviders, primaryModels, numModels) {
+      if (svg._topoListenersAttached) return;
+      svg._topoListenersAttached = true;
+
+      if (!svg._topoZoom) svg._topoZoom = 1;
+      if (!svg._topoPanX) svg._topoPanX = 0;
+      if (!svg._topoPanY) svg._topoPanY = 0;
+
+      let dragStart = null, dragPanStart = null, didDrag = false;
+
+      function getG() { return svg.querySelector('#topo-layer'); }
+
+      function getMouse(e) {
+        const rect = svg.getBoundingClientRect();
+        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      }
+
+      function applyTransform() {
+        const g = getG(); if (!g) return;
+        const z = svg._topoZoom || 1;
+        const px = svg._topoPanX || 0;
+        const py = svg._topoPanY || 0;
+        g.setAttribute('transform', `translate(${px},${py}) scale(${z})`);
+      }
+
+      svg.addEventListener('mousedown', (e) => {
+        if (e.target.closest('.topo-provider-ring') || e.target.closest('.topo-provider-img') || e.target.closest('.topo-provider-mono')) return;
+        dragStart = getMouse(e);
+        dragPanStart = { x: svg._topoPanX || 0, y: svg._topoPanY || 0 };
+        didDrag = false;
+        svg.classList.add('dragging');
+        e.preventDefault();
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!dragStart) return;
+        const m = getMouse(e);
+        const dx = m.x - dragStart.x, dy = m.y - dragStart.y;
+        if (Math.abs(dx) < 2 && Math.abs(dy) < 2) return;
+        didDrag = true;
+        svg._topoPanX = dragPanStart.x + dx;
+        svg._topoPanY = dragPanStart.y + dy;
+        applyTransform();
+      });
+
+      window.addEventListener('mouseup', () => {
+        dragStart = null;
+        svg.classList.remove('dragging');
+      });
+
+      svg.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const m = getMouse(e);
+        const oldZoom = svg._topoZoom || 1;
+        const delta = -e.deltaY * 0.002;
+        const newZoom = Math.max(0.4, Math.min(4, oldZoom + delta * oldZoom));
+        const px = svg._topoPanX || 0, py = svg._topoPanY || 0;
+        svg._topoPanX = m.x - (m.x - px) * (newZoom / oldZoom);
+        svg._topoPanY = m.y - (m.y - py) * (newZoom / oldZoom);
+        svg._topoZoom = newZoom;
+        applyTransform();
+      }, { passive: false });
+
+      svg.addEventListener('click', (e) => {
+        if (didDrag) return;
+        const provEl = e.target.closest('.topo-provider-ring') || e.target.closest('.topo-provider-img') || e.target.closest('.topo-provider-mono');
+        if (provEl) {
+          const pk = provEl.dataset.pkey;
+          if (svg._topoHighlight === pk) {
+            svg._topoHighlight = null;
+          } else {
+            svg._topoHighlight = pk;
+          }
+          applyTopologyHighlight(svg, getG());
+        } else if (!e.target.closest('.topo-model')) {
+          if (svg._topoHighlight) {
+            svg._topoHighlight = null;
+            applyTopologyHighlight(svg, getG());
+          }
+        }
+      });
+
+      svg.addEventListener('dblclick', () => {
+        svg._topoZoom = 1;
+        svg._topoPanX = 0;
+        svg._topoPanY = 0;
+        svg._topoHighlight = null;
+        applyTransform();
+        applyTopologyHighlight(svg, getG());
+      });
+    }
+
+    function applyTopologyHighlight(svg, g) {
+      const pk = svg._topoHighlight;
+      const allEls = g.querySelectorAll('.topo-model, .topo-model-img, .topo-model-label, .topo-provider-ring, .topo-provider-img, .topo-provider-mono, .topo-link, .topo-provider-label');
+      allEls.forEach(el => {
+        const elPk = el.dataset.pkey || el.getAttribute('data-pkey') || '';
+        const isTarget = !pk || elPk === pk;
+        el.classList.toggle('dimmed', !isTarget);
+      });
+    }
+
+    // ---- Animated spring layout: interpolates nodes from initial → settled positions ----
+    function startTopologyAnimation(svg, g, nodes, edges, provNodes, startX, startY, targetX, targetY, provR) {
+      if (svg._topoAnimFrame) cancelAnimationFrame(svg._topoAnimFrame);
+      if (svg._topoAnimDone) { svg._topoAnimDone = true; } // cancel any prior
+      svg._topoAnimDone = false;
+
+      const totalFrames = 70;
+      let frame = 0;
+      const N = nodes.length;
+
+      // Build element lookup: nodeIndex → { circle, img, label, clipCircle }
+      const elMap = new Array(N);
+      for (let i = 0; i < N; i++) elMap[i] = {};
+
+      // Model elements
+      g.querySelectorAll('.topo-model').forEach(el => {
+        const mi = Number(el.dataset.midx);
+        if (mi >= 0 && mi < N) elMap[mi].circle = el;
+      });
+      g.querySelectorAll('.topo-model-img').forEach(el => {
+        const mi = Number(el.dataset.midx);
+        if (mi >= 0 && mi < N) elMap[mi].img = el;
+      });
+      g.querySelectorAll('.topo-model-label').forEach(el => {
+        const mi = Number(el.dataset.midx);
+        if (mi >= 0 && mi < N) elMap[mi].label = el;
+      });
+
+      // Provider elements
+      provNodes.forEach(pn => {
+        const ni = nodes.indexOf(pn);
+        if (ni < 0) return;
+        elMap[ni] = {
+          ring: g.querySelector(`.topo-provider-ring[data-pkey="${pn.providerKey}"]`),
+          img: g.querySelector(`.topo-provider-img[data-pkey="${pn.providerKey}"]`),
+          mono: g.querySelector(`.topo-provider-mono[data-pkey="${pn.providerKey}"]`),
+          label: g.querySelector(`.topo-provider-label[data-pkey="${pn.providerKey}"]`),
+        };
+      });
+
+      // Clip path circles (for model favicons)
+      const clipCircles = g.querySelectorAll('clipPath circle');
+      // We can't easily map them to nodes, so we'll update them via the defs on each frame.
+      // Instead, rebuild clip paths each frame by updating their cx/cy to match the node.
+
+      // Edge path elements (matched by from/to indices)
+      const edgeEls = [];
+      g.querySelectorAll('.topo-link').forEach(el => {
+        const fi = Number(el.dataset.from);
+        const ti = Number(el.dataset.to);
+        edgeEls.push({ el, fi, ti });
+      });
+
+      function tick() {
+        if (svg._topoAnimDone || frame >= totalFrames) {
+          // Snap to final positions
+          nodes.forEach((n, i) => { n.x = targetX[i]; n.y = targetY[i]; });
+          updateAllPositions();
+          return;
+        }
+        frame++;
+        const t = frame / totalFrames;
+        // Ease-out cubic: fast start, gentle settle
+        const ease = 1 - Math.pow(1 - t, 3);
+
+        nodes.forEach((n, i) => {
+          n.x = startX[i] + (targetX[i] - startX[i]) * ease;
+          n.y = startY[i] + (targetY[i] - startY[i]) * ease;
+        });
+
+        updateAllPositions();
+        svg._topoAnimFrame = requestAnimationFrame(tick);
+      }
+
+      function updateAllPositions() {
+        // Update node elements
+        for (let i = 0; i < N; i++) {
+          const n = nodes[i];
+          const px = n.x.toFixed(1), py = n.y.toFixed(1);
+          const els = elMap[i];
+          if (els.circle) { els.circle.setAttribute('cx', px); els.circle.setAttribute('cy', py); }
+          if (els.img) { els.img.setAttribute('x', (n.x - 4).toFixed(1)); els.img.setAttribute('y', (n.y - 4).toFixed(1)); }
+          if (els.label) { els.label.setAttribute('x', px); els.label.setAttribute('y', (n.y + 9).toFixed(1)); }
+          if (els.ring) { els.ring.setAttribute('cx', px); els.ring.setAttribute('cy', py); }
+          if (els.img && els.img.classList.contains('topo-provider-img')) {
+            els.img.setAttribute('x', (n.x - provR * 0.8).toFixed(1));
+            els.img.setAttribute('y', (n.y - provR * 0.8).toFixed(1));
+          }
+          if (els.mono) { els.mono.setAttribute('cx', px); els.mono.setAttribute('cy', py); }
+          if (els.label && els.label.classList.contains('topo-provider-label')) {
+            els.label.setAttribute('y', (n.y + provR + 8).toFixed(1));
+          }
+        }
+        // Update clip path circles (match by cx/cy from startX/startY)
+        clipCircles.forEach(cc => {
+          let ocx = Number(cc.dataset.origCx);
+          let ocy = Number(cc.dataset.origCy);
+          if (!ocx && ocx !== 0) {
+            ocx = Number(cc.getAttribute('cx'));
+            ocy = Number(cc.getAttribute('cy'));
+            cc.dataset.origCx = ocx;
+            cc.dataset.origCy = ocy;
+          }
+          for (let i = 0; i < N; i++) {
+            if (Math.abs(startX[i] - ocx) < 0.1 && Math.abs(startY[i] - ocy) < 0.1) {
+              cc.setAttribute('cx', nodes[i].x.toFixed(1));
+              cc.setAttribute('cy', nodes[i].y.toFixed(1));
+              break;
+            }
+          }
+        });
+        // Update edge paths
+        edgeEls.forEach(({ el, fi, ti }) => {
+          if (fi < 0 || fi >= N || ti < 0 || ti >= N) return;
+          const f = nodes[fi], t2 = nodes[ti];
+          const mx = (f.x + t2.x) / 2, my = (f.y + t2.y) / 2;
+          const dx = t2.x - f.x, dy = t2.y - f.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          let cxOff = 0, cyOff = 0;
+          if (dist > 2) {
+            const curvature = Math.min(5, dist * 0.20);
+            cxOff = (-dy / dist) * curvature;
+            cyOff = (dx / dist) * curvature;
+          }
+          el.setAttribute('d', `M${f.x.toFixed(1)} ${f.y.toFixed(1)} Q${(mx + cxOff).toFixed(1)} ${(my + cyOff).toFixed(1)} ${t2.x.toFixed(1)} ${t2.y.toFixed(1)}`);
+        });
+      }
+
+      svg._topoAnimFrame = requestAnimationFrame(tick);
     }
 
     function drawCurrentModelAnimation(hasActiveModel) {
@@ -3591,11 +4283,20 @@
     // Epoch-ms reset time: from the most recent test response first, otherwise
     // a reset captured by the proxy path (retryDelay/x-ratelimit headers).
     function getRateLimitResetAt(m) {
-      const v = (m && m.lastResponse && m.lastResponse.rateLimitResetAt) ?? (m && m.rateLimit && m.rateLimit.resetRequestsAt);
-      if (v == null) return null;
-      const n = Number(v);
-      if (!Number.isFinite(n) || n <= 0) return null;
-      return n;
+      const limited = m?.rateLimit?.wasRateLimited === true
+        || (m?.rateLimit?.creditLimit > 0 && m?.rateLimit?.creditRemaining != null && m.rateLimit.creditRemaining <= 0)
+        || Number(m?.lastResponse?.status) === 429;
+      if (!limited) return null;
+      const values = [
+        m?.lastResponse?.rateLimitResetAt,
+        m?.rateLimit?.resetRequestsAt,
+        m?.rateLimit?.resetTokensAt,
+        m?.rateLimit?.creditResetAt,
+      ];
+      const future = values
+        .map(Number)
+        .filter(value => Number.isFinite(value) && value > Date.now());
+      return future.length > 0 ? Math.max(...future) : null;
     }
 
     // Human-ish label for a quota failure, e.g. "generate quotum: 20" ->
@@ -3635,6 +4336,21 @@
       } catch {
         return '';
       }
+    }
+
+    function nextUtcMidnight() {
+      const d = new Date();
+      d.setUTCHours(24, 0, 0, 0);
+      return d.getTime();
+    }
+
+    function quotaWindowReset(window) {
+      const d = new Date();
+      if (window === 'month') {
+        return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)).getTime();
+      }
+      if (window === 'day') return nextUtcMidnight();
+      return null;
     }
 
     // Builds the status cell: dot + status text, or — when the most recent test
@@ -3684,23 +4400,61 @@
     // Renders the Quota column: free-tier usage from x-ratelimit-* headers or
     // Gemini-style quota error bodies. Shows usage bar + reset countdown when
     // data is available, or a muted dash otherwise.
+    function providerUsageLine(usage) {
+      const used = usage.used;
+      const limit = usage.limit;
+      const remaining = usage.remaining;
+      const label = usage.unit || 'units';
+      const reset = usage.resetAt && usage.resetAt > Date.now()
+        ? `<span style="color:var(--text-muted);"> · 🕑 ${formatCountdown(usage.resetAt - Date.now())}</span>` : '';
+      const scope = usage.model || usage.project || usage.account || usage.scope || 'account';
+      const window = usage.window ? ` · ${usage.window}` : '';
+      if (used != null && limit != null && limit > 0) {
+        const pct = Math.max(0, Math.min(100, Math.round((used / limit) * 100)));
+        const color = pct >= 90 ? 'var(--error)' : (pct >= 50 ? 'var(--warning)' : 'var(--success)');
+        return `<div title="Provider-reported ${escapeHtml(scope)} usage">
+          <span>${formatQuotaNum(used)}/${formatQuotaNum(limit)} ${escapeHtml(label)}${escapeHtml(window)} <small style="color:var(--text-muted);">reported</small>${reset}</span>
+          <div class="quota-meter"><div style="width:${Math.max(2, pct)}%;background:${color};"></div></div>
+        </div>`;
+      }
+      return `<div title="Provider-reported ${escapeHtml(scope)} usage">
+        ${used != null ? `${formatQuotaNum(used)} used` : ''}${remaining != null ? `${used != null ? ' · ' : ''}${formatQuotaNum(remaining)} remaining` : ''} ${escapeHtml(label)}${escapeHtml(window)} <small>reported</small>${reset}
+      </div>`;
+    }
+
     function quotaCellHTML(m) {
       const rl = m.rateLimit;
-      if (!rl) return '<div style="font-size:0.75rem;color:var(--text-muted);">—</div>';
+      const usages = Array.isArray(m.providerUsages) && m.providerUsages.length > 0
+        ? m.providerUsages
+        : (m.providerUsage ? [m.providerUsage] : []);
 
-      // Prefer request-based info, fall back to token-based, then credits
+      // Authenticated provider usage is authoritative when available. Keep the
+      // source visible so local counters and response headers are not mistaken
+      // for provider-reported consumption.
+      const usableUsages = usages.filter(usage => usage && (
+        usage.used != null ||
+        usage.limit != null ||
+        usage.remaining != null ||
+        usage.resetAt != null
+      ));
+      if (usableUsages.length > 0) {
+        return `<div class="quota-report-list">${usableUsages.map(providerUsageLine).join('')}</div>`;
+      }
+
+      // Prefer request-based info, fall back to token-based, then credits.
+      // If no server-reported limits, show known quota + daily proxy count.
       let limit, remaining, resetAt, label;
-      if (rl.limitRequests != null && rl.limitRequests > 0) {
+      if (rl && rl.limitRequests != null && rl.limitRequests > 0) {
         limit = rl.limitRequests;
         remaining = rl.remainingRequests;
         resetAt = rl.resetRequestsAt;
         label = 'req';
-      } else if (rl.limitTokens != null && rl.limitTokens > 0) {
+      } else if (rl && rl.limitTokens != null && rl.limitTokens > 0) {
         limit = rl.limitTokens;
         remaining = rl.remainingTokens;
         resetAt = rl.resetTokensAt;
         label = 'tokens';
-      } else if (rl.creditLimit != null && rl.creditLimit > 0) {
+      } else if (rl && rl.creditLimit != null && rl.creditLimit > 0) {
         limit = rl.creditLimit;
         remaining = rl.creditRemaining;
         resetAt = rl.creditResetAt;
@@ -3708,8 +4462,8 @@
       }
 
       if (limit != null && remaining != null) {
-        const used = limit - remaining;
-        const pct = Math.round((used / limit) * 100);
+        const used = Math.max(0, Math.min(limit, limit - remaining));
+        const pct = Math.max(0, Math.min(100, Math.round((used / limit) * 100)));
         const warn = pct >= 90;
         const barColor = warn ? 'var(--error)' : (pct >= 50 ? 'var(--warning)' : 'var(--success)');
         const barWidth = Math.max(2, pct);
@@ -3724,9 +4478,16 @@
           ${resetPart}
         </div>`;
       }
+      if (limit != null) {
+        const resetPart = resetAt && resetAt > Date.now()
+          ? `<br><span style="font-size:0.68rem;color:var(--text-muted);">resets ${formatClockTime(resetAt)}</span>` : '';
+        return `<div style="font-size:0.7rem;color:var(--text-muted);" title="Provider-reported ${label} limit">
+          ${formatQuotaNum(limit)} ${label} <small>reported limit</small>${resetPart}
+        </div>`;
+      }
 
       // Quota error body without numeric limits: show the quota name + reset
-      if (rl.quota) {
+      if (rl && rl.quota) {
         const q = rl.quota;
         const name = (q.quotaId || q.quotaMetric || 'quota exceeded').replace(/([a-z])([A-Z])/g, '$1 $2').slice(0, 40);
         const rAt = rl.resetRequestsAt;
@@ -3736,6 +4497,84 @@
           </div>`;
         }
         return `<div style="font-size:0.7rem; color:var(--warning);" title="${escapeHtml(name)}">Limit</div>`;
+      }
+
+      // Known provider quota + daily proxy count: show usage vs the known limit.
+      // This is the common case for NVIDIA (40 RPM), Google (20/day), OpenRouter (50/day)
+      // and other providers that don't send x-ratelimit-* headers on success.
+      const kq = m.knownQuota;
+      const dpc = m.providerDailyProxyCount ?? m.dailyProxyCount;
+      if (kq) {
+        const quotaResetWindow = kq.requestsPerDay != null ? 'day' : kq.window;
+        // A local counter is only comparable to a daily provider limit. Do not
+        // present a UTC-day count as RPM/TPM/RPS usage.
+        let kqLimit, kqWindow, kqLabel, kqTitle;
+        if (kq.requestsPerDay != null) {
+          kqLimit = kq.requestsPerDay;
+          kqWindow = 'day';
+          kqLabel = 'req/day';
+          kqTitle = `${kqLimit} requests/day free tier limit`;
+        }
+
+        if (kqLimit != null && dpc != null && dpc > 0) {
+          // Show proxy count vs known limit with a usage bar
+          const used = dpc;
+          const pct = Math.round(Math.min(100, (used / kqLimit) * 100));
+          const warn = pct >= 90;
+          const barColor = warn ? 'var(--error)' : (pct >= 50 ? 'var(--warning)' : 'var(--success)');
+          const barWidth = Math.max(2, pct);
+          const ra = rl && rl.retryAfterMs;
+          const raStr = ra ? ` · retry-after ${Math.round(ra / 1000)}s` : '';
+          const reset = quotaWindowReset(quotaResetWindow);
+          return `<div style="font-size:0.75rem; font-weight:500; line-height:1.3;" title="Local count only; ${used} / ${kqLimit} ${kqLabel} (${escapeHtml(kq.source || kqTitle || '')})${raStr}">
+            <span>${formatQuotaNum(used)}/${formatQuotaNum(kqLimit)} ${kqLabel} <small style="color:var(--text-muted);">estimated</small></span>
+            <div style="margin-top:2px; height:3px; border-radius:3px; background:var(--border); overflow:hidden;">
+              <div style="height:100%; width:${barWidth}%; background:${barColor}; border-radius:3px; transition:width 1.5s;"></div>
+            </div>
+            ${reset ? `<div style="font-size:0.68rem;color:var(--text-muted);">window resets ~${formatClockTime(reset)}</div>` : ''}
+          </div>`;
+        }
+
+        if (kqLimit != null) {
+          return `<div style="font-size:0.7rem; color:var(--text-muted);" title="${escapeHtml(kq.source || kqTitle || '')}">
+            ${formatQuotaNum(kqLimit)} ${kqLabel} <small>estimated</small>${quotaWindowReset(quotaResetWindow) ? `<br>window resets ~${formatClockTime(quotaWindowReset(quotaResetWindow))}` : ''}
+          </div>`;
+        }
+
+        const referenceLimits = [
+          kq.requestsPerMinute != null ? `${formatQuotaNum(kq.requestsPerMinute)} req/min` : null,
+          kq.requestsPerSecond != null ? `${formatQuotaNum(kq.requestsPerSecond)} req/sec` : null,
+          kq.tokensPerMinute != null ? `${formatQuotaNum(kq.tokensPerMinute)} tokens/min` : null,
+          kq.tokensPerDay != null ? `${formatQuotaNum(kq.tokensPerDay)} tokens/day` : null,
+          kq.creditsPerMonth != null ? `${formatQuotaNum(kq.creditsPerMonth)} credits/month` : null,
+        ].filter(Boolean);
+        if (referenceLimits.length > 0) {
+          return `<div style="font-size:0.7rem; color:var(--text-muted);" title="${escapeHtml(kq.source || '')}">
+            ${referenceLimits.join(' · ')} <small>estimated</small>${quotaWindowReset(quotaResetWindow) ? `<br>window resets ~${formatClockTime(quotaWindowReset(quotaResetWindow))}` : ''}
+          </div>`;
+        }
+
+        if (kq.limitScope && dpc != null) {
+          const reset = quotaWindowReset(quotaResetWindow);
+          return `<div style="font-size:0.7rem;color:var(--text-muted);" title="${escapeHtml(kq.source || '')}">
+            ${formatQuotaNum(dpc)} req today · account limit
+            ${reset ? `<br><span style="font-size:0.68rem;">window resets ~${formatClockTime(reset)}</span>` : ''}
+          </div>`;
+        }
+      }
+
+      // Fallback: no server headers, no known quota — show client-tracked daily
+      // proxy request count.
+      if (dpc != null && dpc > 0) {
+        const ra = rl && rl.retryAfterMs;
+        const raStr = ra ? ` · retry-after ${Math.round(ra / 1000)}s` : '';
+        return `<div style="font-size:0.7rem; color:var(--text-muted);" title="Proxied ${dpc} request${dpc === 1 ? '' : 's'} today via modelrelay${raStr}">
+          ${dpc} req today
+        </div>`;
+      }
+
+      if (kq?.source) {
+        return `<div style="font-size:0.7rem; color:var(--text-muted);" title="${escapeHtml(kq.source)}">${kq.limitScope ? 'Daily limit · account/model-specific' : 'Provider-reported limits only'}</div>`;
       }
 
       return '<div style="font-size:0.75rem;color:var(--text-muted);">—</div>';
@@ -3750,16 +4589,17 @@
     }
 
     function combinedStatusCellHTML(m) {
+      const currentStatus = String(m.status || '').toLowerCase();
       // Paid: show dollar icon + 'Paid'
-      if (m.lastResponse && m.lastResponse.paymentRequired === true) {
+      if (m.lastResponse && m.lastResponse.paymentRequired === true && currentStatus !== 'up') {
         return `<span class="paid-status" title="Payment required — add billing to use this model">💲 Paid</span>`;
       }
       // Incompatible: model can't accept text chat (image/video only)
-      if ((m.lastResponse && m.lastResponse.incompatible === true) || m.status === 'incompatible') {
+      if ((m.lastResponse && m.lastResponse.incompatible === true && currentStatus !== 'up') || currentStatus === 'incompatible') {
         return `<span style="color: var(--text-muted);" title="Model does not support text chat (image/video only)">Incompatible</span>`;
       }
       // Dead: show red dot + 'DEAD'
-      if ((m.lastResponse && m.lastResponse.dead === true) || m.status === 'dead') {
+      if ((m.lastResponse && m.lastResponse.dead === true && currentStatus !== 'up') || currentStatus === 'dead') {
         return `<span style="width: 6px; height: 6px; border-radius: 50%; background: var(--error); display: inline-block; vertical-align: middle;"></span>
           <span style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; vertical-align: middle;">Dead</span>`;
       }
@@ -3776,7 +4616,7 @@
       }
       // Test response exists? Show it
       const hasAuth = m.status !== 'noauth';
-      if (hasAuth && m.lastResponse) {
+      if (hasAuth && currentStatus === 'up' && m.lastResponse) {
         const expired = m.lastResponse.expiresAt != null && Date.now() > Number(m.lastResponse.expiresAt);
         if (!expired && (m.lastResponse.text != null || m.lastResponse.error != null)) {
           const r = responseCellHTML(m.lastResponse, { rowKey: getModelRowKey(m), providerKey: m.providerKey, modelId: m.modelId, hasAuth: true, status: m.status });
@@ -3789,8 +4629,10 @@
         : (m.status === 'disabled' || m.status === 'banned' || m.status === 'excluded') ? 'var(--text-muted)'
         : 'var(--error)';
       const statusText = m.status === 'noauth' ? 'No Auth' : m.status;
-      return `<span style="width: 6px; height: 6px; border-radius: 50%; background: ${dotColor}; display: inline-block; vertical-align: middle;"></span>
-        <span style="font-size: 0.75rem; font-weight: 500; text-transform: capitalize; vertical-align: middle;">${statusText}</span>`;
+      const errorText = m.lastError?.message ? String(m.lastError.message) : '';
+      const statusTitle = errorText ? `HTTP ${m.lastError.code || m.httpCode || '?'} — ${errorText}` : '';
+      return `<span style="width: 6px; height: 6px; border-radius: 50%; background: ${dotColor}; display: inline-block; vertical-align: middle;"${statusTitle ? ` title="${escapeAttr(statusTitle)}"` : ''}></span>
+        <span style="font-size: 0.75rem; font-weight: 500; text-transform: capitalize; vertical-align: middle;"${statusTitle ? ` title="${escapeAttr(statusTitle)}"` : ''}>${escapeHtml(statusText)}${errorText && currentStatus !== 'up' ? ` <span style="color:var(--text-muted);">· ${escapeHtml(errorText)}</span>` : ''}</span>`;
     }
 
     // Runs once per second: ticks rate-limit countdowns, restores plain status on
@@ -3856,7 +4698,10 @@
       if (deadCount > 0) parts.push(`${deadCount} dead`);
       if (incompatCount > 0) parts.push(`${incompatCount} incompatible`);
       const statusText = parts.join(' / ');
-      const last = members[members.length - 1].lastResponse;
+      const last = members
+        .map(member => member.lastResponse)
+        .filter(Boolean)
+        .sort((a, b) => Number(b.at || 0) - Number(a.at || 0))[0];
       const respText = last && last.error ? `<div class="test-response err" title="${escapeAttr(String(last.error))}">${escapeHtml(String(last.error).slice(0, 120))}</div>` : '';
       return `
         <tr class="row-struck">
@@ -3944,7 +4789,10 @@
       if (deadCount > 0) parts.push(`${deadCount} dead`);
       if (incompatCount > 0) parts.push(`${incompatCount} incompatible`);
       const statusText = parts.join(' / ');
-      const last = members[members.length - 1].lastResponse;
+      const last = members
+        .map(member => member.lastResponse)
+        .filter(Boolean)
+        .sort((a, b) => Number(b.at || 0) - Number(a.at || 0))[0];
       const respText = last && last.error ? `<div class="test-response err" title="${escapeAttr(String(last.error))}">${escapeHtml(String(last.error).slice(0, 120))}</div>` : '';
       return `
           <td style="cursor:pointer;" onclick='openDrawer(${JSON.stringify(first).replace(/'/g, "&apos;")})'>
