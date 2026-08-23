@@ -82,15 +82,22 @@ Do not bump the major version.
 
 ## Model Quality Scores
 
-Model quality is refreshed from OpenRouter's public Models API at runtime and cached for 24 hours. Use this source hierarchy, in order:
+Model quality is refreshed from OpenRouter's public Models API at runtime and cached for 24 hours. The 0–1 score hierarchy, in order:
 
-1. `benchmarks.artificial_analysis.coding_index / 100` (preferred)
-2. Design Arena `models/codecategories` Elo converted to a 0–1 coding score by the regression trained from catalog models that have both values
-3. The bounded metadata estimate in `lib/model-quality.js` (popularity, recency, coding capabilities, and context length)
-4. `scores.js` as an offline fallback
-5. `0.45` only when no catalog match or local fallback exists
+1. LMArena (text leaderboard) Elo, normalized as a board percentile
+2. `benchmarks.artificial_analysis.coding_index / 100`
+3. Design Arena `models/codecategories` Elo converted to a 0–1 coding score by the regression trained from catalog models that have both values
+4. The bounded metadata estimate in `lib/model-quality.js` (popularity, recency, coding capabilities, and context length)
+5. `scores.js` as an offline fallback
+6. No score at all (`null`) when no catalog match or local fallback exists — the dashboard renders it as `—`, never a placeholder value
 
-Design Arena, metadata, local, and default scores MUST remain labeled as fallbacks. Never describe an estimated score as verified or silently substitute an invented benchmark.
+Everything the dashboard displays is on one Elo-like scale. Real LMArena ratings (`lmarena-overall`/`lmarena-coding` in the model rows) are shown plain; the coding board is marked `Code`; every other display value is an estimate marked with a `*`:
+
+- Artificial Analysis coding indexes are mapped onto the Elo scale by the anchor regression fit from catalog models that have both an AA index and an LMArena rating (`fitAAEloRegression`), clamped to the observed anchor range.
+- Design Arena models show their raw Design Arena Elo rating.
+- Metadata and offline (`scores.js`) estimates show the board Elo at their score's percentile (`eloForPercentile`, the inverse of `normalizeLMarenaElo`).
+
+These estimates MUST remain labeled (the `*` marker and the hover source/detail) and never be described as verified. Never silently substitute an invented benchmark.
 
 ### Audit Command
 

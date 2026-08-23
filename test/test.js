@@ -22,6 +22,7 @@ import {
   filterModelsByRequested,
   isRetryableProxyStatus,
   computeFailedRefreshRetryAt,
+  pruneDiscoverableRows,
   parseContextSize,
   parseArgs,
   parseOpenRouterKeyRateLimit,
@@ -41,13 +42,31 @@ import {
   formatTokenCount,
   isOverLengthErrorText,
   parseContextLimitFromError,
+  parseMaxTokensCapFromError,
   parseEpochResetValue,
+  extractQuotaFailure,
   extractRateLimitResetMs,
+  parseRetryDelayMs,
+  isPaymentRequiredError,
+  isDeadModelError,
+  isIncompatibleModelError,
+  shouldKeepUpAfterFailedProbe,
   VERDICT_ORDER,
 } from '../lib/utils.js'
 import { buildOpenClawProviderConfig } from '../lib/onboard.js'
 import { normalizeMissingScoreId } from '../lib/score-fetcher.js'
-import { buildOpenRouterQualityIndex, fitLinearRegression, qualityLookupKeys, resolveModelQuality } from '../lib/model-quality.js'
+import {
+  buildOpenRouterQualityIndex,
+  extractLMArenaEntries,
+  findLMArenaEntry,
+  eloForPercentile,
+  fitAAEloRegression,
+  fitLinearRegression,
+  lmArenaMatchScore,
+  normalizeLMArenaElo,
+  qualityLookupKeys,
+  resolveModelQuality,
+} from '../lib/model-quality.js'
 import { getConfiguredTagNames, getModelTagKey, getModelTags as getUserModelTags, normalizeTag, normalizeTags, setModelTags } from '../lib/tags.js'
 import { resolveAutostartExecPath, resolveAutostartNodePath } from '../lib/autostart.js'
 import { exportConfigToken, getApiKey, getApiKeyPool, getMaxTurns, getPinningMode, getProviderBaseUrl, getProviderModelId, getProviderPingIntervalMs, hasMultipleKeys, importConfigToken, normalizeConfigShape, isOpenAICompatibleInstanceKey, getBaseProviderKey, getOpenAICompatibleInstanceId, buildOpenAICompatibleInstanceKey, listOpenAICompatibleEndpoints, upsertOpenAICompatibleEndpoint, removeOpenAICompatibleEndpoint } from '../lib/config.js'
@@ -1187,8 +1206,278 @@ describe('OpenRouter model quality scoring', () => {
   it('labels local and blind defaults when no catalog match exists', () => {
     const quality = buildOpenRouterQualityIndex(catalog)
     assert.equal(resolveModelQuality(quality, 'unknown/local', 0.61).source, 'local-fallback')
-    assert.equal(resolveModelQuality(quality, 'unknown/blind').score, 0.45)
-    assert.equal(resolveModelQuality(quality, 'unknown/blind').source, 'default-fallback')
+    const blind = resolveModelQuality(quality, 'unknown/blind')
+    assert.equal(blind.score, null)
+    assert.equal(blind.source, 'default-fallback')
+  })
+})
+
+describe('LMArena Elo leaderboard parsing', () => {
+  it('extracts the entries array from a Next.js RSC payload', () => {
+    // Real payload shape captured from lmarena.ai/leaderboard/text/coding.
+    const rsc = `a:["$","$L31",null,{"leaderboard":{"id":"leaderboard-sets/public/leaderboards/text-coding-style_control/leaderboard-snapshots/latest","entries":[{"rank":1,"modelDisplayName":"claude-opus-4-7-high","rating":1551.55,"votes":17212},{"rank":2,"modelDisplayName":"deepseek-v4-pro-high-20260813","rating":1530.1,"votes":1000}]}}]`
+    const entries = extractLMArenaEntries(rsc)
+    assert.equal(entries.length, 2)
+    assert.equal(entries[0].displayName, 'claude-opus-4-7-high')
+    assert.equal(entries[0].elo, 1551.55)
+    assert.equal(entries[0].votes, 17212)
+  })
+
+  it('returns [] for payloads without an entries array', () => {
+    assert.deepEqual(extractLMArenaEntries('{"foo":"bar"}'), [])
+    assert.deepEqual(extractLMArenaEntries(''), [])
+    assert.deepEqual(extractLMArenaEntries(null), [])
+  })
+
+  it('ignores braces inside string values while scanning', () => {
+    const rsc = `{"entries":[{"modelDisplayName":"weird {model} [v2]","rating":1200,"votes":3}]}`
+    assert.equal(extractLMArenaEntries(rsc).length, 1)
+  })
+})
+
+describe('LMArena Elo model matching', () => {
+  const boards = {
+    coding: [
+      { displayName: 'gpt-oss-20b', elo: 1370, votes: 2184 },
+      { displayName: 'llama-3.3-70b-instruct', elo: 1346, votes: 8757 },
+      { displayName: 'mistral-small-2506', elo: 1350, votes: 500 },
+    ],
+    overall: [
+      { displayName: 'claude-sonnet-4-5-20250929', elo: 1455, votes: 80858 },
+      { displayName: 'nvidia-nemotron-3.5-lightning-30b-a3b-nvfp4', elo: 1348, votes: 3392 },
+      { displayName: 'deepseek-v4-flash', elo: 1436, votes: 49001 },
+      { displayName: 'glm-5.2-max', elo: 1470, votes: 30637 },
+      { displayName: 'hy3', elo: 1457, votes: 5877 },
+      { displayName: 'inkling', elo: 1440, votes: 18488 },
+    ],
+  }
+
+  it('matches :free variants to their base LMArena entry', () => {
+    const m = findLMArenaEntry('nvidia/nemotron-3.5-lightning:free', boards)
+    assert.ok(m)
+    assert.equal(m.displayName, 'nvidia-nemotron-3.5-lightning-30b-a3b-nvfp4')
+    assert.equal(m.board, 'overall')
+  })
+
+  it('uses the curated alias map when tokens disagree', () => {
+    const m = findLMArenaEntry('z-ai/glm-5.2:free', boards)
+    assert.ok(m)
+    assert.equal(m.displayName, 'glm-5.2-max')
+  })
+
+  it('prefers the overall board over the coding board', () => {
+    const m = findLMArenaEntry('claude-sonnet-4.5', boards)
+    assert.ok(m)
+    assert.equal(m.board, 'overall')
+    assert.equal(m.displayName, 'claude-sonnet-4-5-20250929')
+  })
+
+  it('keeps size tokens distinct (gpt-oss-20b vs gpt-oss-120b)', () => {
+    assert.ok(lmArenaMatchScore('openai/gpt-oss-20b', 'gpt-oss-20b') > 0)
+    assert.equal(lmArenaMatchScore('openai/gpt-oss-20b', 'gpt-oss-120b'), 0)
+  })
+
+  it('rejects version mismatches (gemini-3 vs gemini-3.7)', () => {
+    assert.equal(lmArenaMatchScore('gemini-3-flash-preview', 'gemini-3.7-flash-high'), 0)
+    assert.ok(lmArenaMatchScore('gemini-3.7-flash', 'gemini-3.7-flash-high') > 0)
+  })
+
+  it('returns null when nothing matches', () => {
+    assert.equal(findLMArenaEntry('cohere/north-mini-code:free', boards), null)
+    assert.equal(findLMArenaEntry('totally-unknown-model', boards), null)
+    assert.equal(findLMArenaEntry('x', null), null)
+  })
+
+  it('normalizes Elo as a monotonic percentile within the board', () => {
+    // 1455 is the median of the overall board (between 1436 and 1457) -> ~0.5.
+    const pct = normalizeLMArenaElo(1455, null, boards.overall)
+    assert.ok(pct >= 0.4 && pct <= 0.6)
+    // Higher Elo -> strictly higher percentile.
+    assert.ok(normalizeLMArenaElo(1470, null, boards.overall) > pct)
+    // Non-finite Elo -> no score (no 0.45 default).
+    assert.equal(normalizeLMArenaElo('nope', null, boards.overall), null)
+    // Empty board -> simple clamp fallback.
+    assert.ok(normalizeLMArenaElo(1455, null, []) >= 0.05)
+  })
+})
+
+describe('LMArena Elo priority in score resolution', () => {
+  const catalog = [
+    {
+      id: 'vendor/direct-model',
+      created: 1_750_000_000,
+      context_length: 131072,
+      supported_parameters: ['reasoning', 'tools', 'structured_outputs'],
+      benchmarks: {
+        artificial_analysis: { coding_index: 72, intelligence_index: 60 },
+        design_arena: [{ arena: 'models', category: 'codecategories', elo: 1300 }],
+      },
+    },
+  ]
+  const boards = {
+    coding: [{ displayName: 'direct-model', elo: 1400, votes: 5000 }],
+    overall: [{ displayName: 'direct-model', elo: 1500, votes: 9000 }],
+  }
+
+  it('prefers LMArena Elo over Artificial Analysis when a match exists', () => {
+    const quality = buildOpenRouterQualityIndex(catalog, catalog, 1_760_000_000_000)
+    quality.lmArenaBoards = boards
+    const direct = resolveModelQuality(quality, 'vendor/direct-model', 0.99)
+    assert.equal(direct.source, 'lmarena-overall')
+    assert.equal(direct.isEstimated, false)
+    assert.equal(direct.elo, 1500)
+    assert.match(direct.detail, /LMArena overall Elo 1500/)
+  })
+
+  it('falls back to the catalog index when LMArena has no match', () => {
+    const quality = buildOpenRouterQualityIndex(catalog, catalog, 1_760_000_000_000)
+    quality.lmArenaBoards = boards
+    // No LMArena match -> catalog lookup; no catalog match -> local fallback.
+    const local = resolveModelQuality(quality, 'vendor/no-elo-match', 0.99)
+    assert.equal(local.source, 'local-fallback')
+    const blind = resolveModelQuality(quality, 'vendor/no-elo-match')
+    assert.equal(blind.source, 'default-fallback')
+  })
+
+  it('keeps old behavior when no boards are attached', () => {
+    const quality = buildOpenRouterQualityIndex(catalog, [...catalog].reverse(), 1_760_000_000_000)
+    const direct = resolveModelQuality(quality, 'vendor/direct-model', 0.99)
+    assert.equal(direct.source, 'artificial-analysis')
+    assert.equal(direct.isEstimated, false)
+  })
+})
+
+describe('Artificial Analysis to Elo scale mapping', () => {
+  const catalog = [
+    { id: 'vendor/alpha', benchmarks: { artificial_analysis: { coding_index: 40 }, design_arena: [{ arena: 'models', category: 'codecategories', elo: 1050 }] } },
+    { id: 'vendor/beta', benchmarks: { artificial_analysis: { coding_index: 60 }, design_arena: [{ arena: 'models', category: 'codecategories', elo: 1250 }] } },
+    { id: 'vendor/gamma', benchmarks: { artificial_analysis: { coding_index: 80 } } },
+    { id: 'vendor/delta', benchmarks: { artificial_analysis: { coding_index: 50 } } },
+    { id: 'vendor/epsilon', benchmarks: { artificial_analysis: { coding_index: 20 } } },
+    { id: 'vendor/arena-only', benchmarks: { design_arena: [{ arena: 'models', category: 'codecategories', elo: 1200 }] } },
+    { id: 'vendor/meta-only', created: 1_750_000_000, context_length: 262144, supported_parameters: ['reasoning', 'tools'] },
+  ]
+  const boards = {
+    overall: [
+      { displayName: 'alpha', elo: 1100, votes: 100 },
+      { displayName: 'beta', elo: 1300, votes: 100 },
+      { displayName: 'gamma', elo: 1500, votes: 100 },
+    ],
+    coding: [],
+  }
+
+  it('fits an AA -> Elo regression from models with both values', () => {
+    const regression = fitAAEloRegression(catalog, boards)
+    assert.ok(regression)
+    assert.equal(regression.sampleSize, 3)
+    assert.equal(regression.slope, 10)
+    assert.equal(regression.intercept, 700)
+    assert.equal(regression.eloMin, 1100)
+    assert.equal(regression.eloMax, 1500)
+  })
+
+  it('returns null without at least two anchor points', () => {
+    assert.equal(fitAAEloRegression([catalog[0]], boards), null)
+    assert.equal(fitAAEloRegression([], boards), null)
+    assert.equal(fitAAEloRegression(catalog, { overall: [], coding: [] }), null)
+  })
+
+  it('maps an AA-only model onto the Elo scale when no LMArena match exists', () => {
+    const quality = buildOpenRouterQualityIndex(catalog, catalog, 1_760_000_000_000)
+    quality.lmArenaBoards = boards
+    quality.aaEloRegression = fitAAEloRegression(catalog, boards)
+
+    const result = resolveModelQuality(quality, 'vendor/delta', 0.99)
+    assert.equal(result.source, 'artificial-analysis')
+    assert.equal(result.score, 0.5)
+    assert.equal(result.elo, 1200)
+    assert.equal(result.eloEstimated, true)
+  })
+
+  it('clamps AA-mapped Elo estimates to the observed anchor range', () => {
+    const quality = buildOpenRouterQualityIndex(catalog, catalog, 1_760_000_000_000)
+    quality.lmArenaBoards = boards
+    quality.aaEloRegression = fitAAEloRegression(catalog, boards)
+
+    // AA 20 extrapolates to Elo 900, below every anchor -> clamped to 1100.
+    const result = resolveModelQuality(quality, 'vendor/epsilon', 0.99)
+    assert.equal(result.elo, 1100)
+  })
+
+  it('prefers a real LMArena Elo over the AA-mapped estimate', () => {
+    const quality = buildOpenRouterQualityIndex(catalog, catalog, 1_760_000_000_000)
+    quality.lmArenaBoards = boards
+    quality.aaEloRegression = fitAAEloRegression(catalog, boards)
+
+    const result = resolveModelQuality(quality, 'vendor/gamma', 0.99)
+    assert.equal(result.source, 'lmarena-overall')
+    assert.equal(result.elo, 1500)
+    assert.equal(result.eloFromAA, undefined)
+  })
+
+  it('falls back to the board percentile scale when no AA regression exists', () => {
+    const quality = buildOpenRouterQualityIndex(catalog, catalog, 1_760_000_000_000)
+    quality.lmArenaBoards = boards
+    // No aaEloRegression attached -> the percentile of the overall board is used.
+    const result = resolveModelQuality(quality, 'vendor/delta', 0.99)
+    assert.equal(result.source, 'artificial-analysis')
+    assert.equal(result.score, 0.5)
+    assert.equal(result.elo, 1300)
+    assert.equal(result.eloEstimated, true)
+  })
+
+  it('uses the raw Design Arena Elo when present', () => {
+    const quality = buildOpenRouterQualityIndex(catalog, catalog, 1_760_000_000_000)
+    // No boards attached: the raw Design Arena rating is still shown.
+    const arena = resolveModelQuality(quality, 'vendor/arena-only', 0.99)
+    assert.equal(arena.source, 'design-arena')
+    assert.equal(arena.elo, 1200)
+    assert.equal(arena.eloEstimated, true)
+  })
+
+  it('maps metadata estimates onto the Elo scale via the board percentile', () => {
+    const quality = buildOpenRouterQualityIndex(catalog, catalog, 1_760_000_000_000)
+    quality.lmArenaBoards = boards
+    const result = resolveModelQuality(quality, 'vendor/meta-only', 0.99)
+    assert.equal(result.source, 'metadata')
+    assert.ok(result.score >= 0.35 && result.score <= 0.65)
+    // Expected = the overall board Elo at the score's percentile.
+    assert.equal(result.elo, eloForPercentile(result.score, boards.overall))
+    assert.equal(result.eloEstimated, true)
+  })
+
+  it('maps local offline scores to the Elo scale when boards exist', () => {
+    const quality = buildOpenRouterQualityIndex(catalog, catalog, 1_760_000_000_000)
+    quality.lmArenaBoards = boards
+    const result = resolveModelQuality(quality, 'vendor/unknown-offline', 0.5)
+    assert.equal(result.source, 'local-fallback')
+    assert.equal(result.elo, 1300)
+    assert.equal(result.eloEstimated, true)
+  })
+})
+
+describe('Elo scale percentile mapping', () => {
+  const board = [{ elo: 1100, votes: 1 }, { elo: 1300, votes: 1 }, { elo: 1500, votes: 1 }]
+
+  it('maps the endpoints of the percentile range to the board extremes', () => {
+    assert.equal(eloForPercentile(0.05, board), 1100)
+    assert.equal(eloForPercentile(0.95, board), 1500)
+  })
+
+  it('maps the median score to the board median Elo', () => {
+    assert.equal(eloForPercentile(0.5, board), 1300)
+  })
+
+  it('is monotonic and interpolates between board entries', () => {
+    assert.ok(eloForPercentile(0.3, board) > 1100)
+    assert.ok(eloForPercentile(0.3, board) < 1300)
+    assert.ok(eloForPercentile(0.8, board) > 1300)
+    assert.ok(eloForPercentile(0.8, board) < 1500)
+  })
+
+  it('returns null for an empty board or non-finite score', () => {
+    assert.equal(eloForPercentile(0.5, []), null)
+    assert.equal(eloForPercentile('nope', board), null)
   })
 })
 
@@ -2075,6 +2364,36 @@ describe('computeFailedRefreshRetryAt', () => {
   })
 })
 
+describe('pruneDiscoverableRows', () => {
+  const staticIds = ['a/one', 'b/two', 'c/three']
+  const rows = [
+    { modelId: 'a/one', providerKey: 'p' },
+    { modelId: 'b/two', providerKey: 'p' },
+    { modelId: 'c/three', providerKey: 'p' },
+    { modelId: 'x/prev-discovered', providerKey: 'p' },
+  ]
+
+  it('prunes static rows absent from a healthy discovery', () => {
+    const kept = pruneDiscoverableRows(rows, staticIds, [{ modelId: 'a/one' }, { modelId: 'b/two' }], false)
+    assert.deepEqual(kept.map(r => r.modelId), ['a/one', 'b/two'])
+  })
+
+  it('keeps everything when discovery is empty (failed refresh)', () => {
+    const kept = pruneDiscoverableRows(rows, staticIds, [], false)
+    assert.deepEqual(kept.map(r => r.modelId), ['a/one', 'b/two', 'c/three'])
+  })
+
+  it('keeps all static rows when keepStaticOnDiscovery is set', () => {
+    const kept = pruneDiscoverableRows(rows, staticIds, [{ modelId: 'a/one' }], true)
+    assert.deepEqual(kept.map(r => r.modelId), ['a/one', 'b/two', 'c/three'])
+  })
+
+  it('never keeps previously-discovered rows that disappeared', () => {
+    const kept = pruneDiscoverableRows(rows, staticIds, [{ modelId: 'a/one' }, { modelId: 'x/prev-discovered' }], false)
+    assert.deepEqual(kept.map(r => r.modelId), ['a/one', 'x/prev-discovered'])
+  })
+})
+
 describe('parseContextSize', () => {
   it('parses k and m suffixes into raw token counts', () => {
     assert.equal(parseContextSize('128k'), 128_000)
@@ -2634,9 +2953,11 @@ describe('package and entrypoint sanity', () => {
     assert.ok(binContent.includes("from '../lib/onboard.js'"))
   })
 
-  it('labels dashboard scores by the current coding-quality source', () => {
-    assert.ok(dashboardContent.includes('>Coding <i class="sort-arrow"'))
-    assert.ok(dashboardContent.includes('Artificial Analysis coding index'))
+  it('labels dashboard scores by the current intelligence source', () => {
+    assert.ok(dashboardContent.includes('>Intelligence <i class="sort-arrow"'))
+    assert.ok(dashboardContent.includes('LMArena overall Elo'))
+    assert.ok(dashboardContent.includes('LMArena coding Elo'))
+    assert.ok(dashboardContent.includes('Artificial Analysis index'))
     assert.ok(dashboardContent.includes('Design Arena estimate'))
     assert.ok(dashboardContent.includes('Metadata estimate'))
     assert.equal(dashboardContent.includes('>SWE% <i class="sort-arrow"'), false)
@@ -2665,9 +2986,8 @@ describe('package and entrypoint sanity', () => {
 
   it('adds a Response column with a Test button that captures full model responses', () => {
     const serverContent = readFileSync(join(ROOT, 'lib/server.js'), 'utf8')
-    // Column header exists, after Status
-    assert.ok(dashboardContent.includes('>Response</th>'))
-    assert.ok(dashboardContent.indexOf('>Status <i') < dashboardContent.indexOf('>Response</th>'))
+    // Column header exists — Status and Response are now merged into one column
+    assert.ok(dashboardContent.includes('>Status / Response</th>'))
     // Test flow: button handler, response cell renderer, and in-flight guard
     assert.ok(dashboardContent.includes("function testModelButton(btn, opts)"))
     assert.ok(dashboardContent.includes("function responseCellHTML(lastResponse, opts)"))
@@ -3207,9 +3527,23 @@ describe('context window bounds (known + observed)', () => {
     assert.equal(accumulateContextObservation(stats, {}), stats)
   })
 
-  it('prefers known catalog context over observed bounds', () => {
+  it('prefers known catalog context over non-exact observed bounds', () => {
     const stats = { contextMin: 120_000, contextMax: 500_000, contextMaxExact: false }
     assert.deepEqual(computeContextDisplay('128k', stats), { display: '128k', tokens: 128_000, source: 'known' })
+  })
+
+  it('overrides catalog context with a provider-stated exact maximum', () => {
+    // "This model's maximum context length is 4096 tokens..." recorded from an error
+    assert.deepEqual(computeContextDisplay('131k', { contextMax: 4096, contextMaxExact: true }),
+      { display: '≤4k', tokens: 4096, source: 'observed' })
+    // Exact max + no known: min bound is still preserved
+    assert.deepEqual(computeContextDisplay(null, { contextMin: 2000, contextMax: 4096, contextMaxExact: true }),
+      { display: '>2k, ≤4k', tokens: 2000, source: 'observed' })
+    // Loose (non-exact) bounds never override known catalog data
+    assert.deepEqual(computeContextDisplay('128k', { contextMin: 120_000, contextMax: 200_000, contextMaxExact: false }),
+      { display: '128k', tokens: 128_000, source: 'known' })
+    // The exact message the user pasted parses to 4096
+    assert.equal(parseContextLimitFromError("This model's maximum context length is 4096 tokens. However, you requested 16404 tokens (20 in the messages, 16384 in the completion). Please reduce the length of the messages or completion."), 4096)
   })
 
   it('builds bound displays from observations', () => {
@@ -3237,8 +3571,110 @@ describe('context window bounds (known + observed)', () => {
     assert.equal(parseContextLimitFromError("This model's maximum context length is 128000 tokens. However, your messages resulted in 128005 tokens."), 128_000)
     assert.equal(parseContextLimitFromError('prompt is too long: 216102 tokens > 200000 maximum'), 200_000)
     assert.equal(parseContextLimitFromError('context_length_exceeded: maximum is 131072'), 131_072)
+    // A max_tokens cap also reveals a hard limit, even when catalog data exists
+    assert.equal(parseContextLimitFromError('`max_tokens` must be less than or equal to `8192`, the maximum value for `max_tokens` is less than the `context_window` for this model'), 8192)
+    assert.equal(parseContextLimitFromError('max_tokens must be less than or equal to 4096'), 4096)
+    // A "Request too large ... Limit X, Requested Y" cap reveals the same
+    assert.equal(parseContextLimitFromError('Request too large for model `openai/gpt-oss-20b` in organization `org_01krf909wkear9a6bw9d7bxkn8` service tier `on_demand` on tokens per minute (TPM): Limit 8000, Requested 16463, please reduce your message size and try again.'), 8000)
+    assert.equal(parseContextLimitFromError('Limit 1,500, Requested 3,000, retry later'), 1500)
+    assert.equal(parseContextLimitFromError('This request would exceed your organization rate limit of 20000 input tokens per minute. This request would use 25000 input tokens'), null)
     assert.equal(parseContextLimitFromError('some unrelated error'), null)
     assert.equal(parseContextLimitFromError(null), null)
+  })
+
+  it('detects payment-required errors', () => {
+    // Ollama cloud's paid-model rejection
+    assert.equal(isPaymentRequiredError('this model requires both a Pro, Max, or Team plan and extra usage (it does not use included plan usage), upgrade for access: https://ollama.com/upgrade then add extra usage: https://ollama.com/settings', 403), true)
+    // Ollama subscription-style rejection
+    assert.equal(isPaymentRequiredError('this model requires a subscription, upgrade for access: https://ollama.com/upgrade (ref: 3cdc9063-a760-4c12-b6e7-88a3b5cf39bf)', 403), true)
+    assert.equal(isPaymentRequiredError('this model requires a paid subscription to use', 403), true)
+    // Classic OpenAI-style 402 body
+    assert.equal(isPaymentRequiredError('Payment required to access this resource. Visit your billing tab.', 400), true)
+    // Status alone (402) is enough
+    assert.equal(isPaymentRequiredError('some other error', 402), true)
+    // Free-tier rate limits stay rate limits, not payment walls
+    assert.equal(isPaymentRequiredError('Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day', 429), false)
+    assert.equal(isPaymentRequiredError('Invalid API key', 401), false)
+    assert.equal(isPaymentRequiredError(null, 200), false)
+  })
+
+  it('detects dead-model errors (410 Gone / end-of-life)', () => {
+    // NVIDIA-style 410 with EOL detail, as in the field
+    assert.equal(isDeadModelError('The model \'z-ai/glm-5.2\' has reached its end of life on 2026-08-21T09:00:00Z and is no longer available.', 410), true)
+    // Cerebras-style archived rejection (not a 410)
+    assert.equal(isDeadModelError('Model zai-glm-4.7 is archived and unavailable for the organization.', 400), true)
+    // HTTP 410 alone is enough
+    assert.equal(isDeadModelError(null, 410), true)
+    // NVIDIA NIM: removed model returns 404 with "Not found for account"
+    assert.equal(isDeadModelError('Function \'8378ffb2-51b0-4140-9684-dda1889373e6\' not found for account', 404), true)
+    assert.equal(isDeadModelError('{"status":404,"title":"Not Found","detail":"Function not found for account"}', 404), true)
+    // Google AI: model not found for generateContent → definitively dead
+    assert.equal(isDeadModelError('models/lyria-realtime-exp is not found for API version v1main, or is not supported for generateContent.', 404), true)
+    // NVIDIA NIM: plain 404 page not found for removed models
+    assert.equal(isDeadModelError('404 page not found', 404), true)
+    // NVIDIA NIM: generic "Model not found" with 404
+    assert.equal(isDeadModelError('{"error":{"message":"Model not found","type":"Not Found","code":404}}', 404), true)
+    // "Model not found" without 404 is not treated as dead (could be transient)
+    assert.equal(isDeadModelError('Model not found', 500), false)
+    // Non-dead failures stay non-dead
+    assert.equal(isDeadModelError('Rate limit exceeded', 429), false)
+    assert.equal(isDeadModelError('Request timed out', 503), false)
+    assert.equal(isDeadModelError('Payment required', 402), false)
+    assert.equal(isDeadModelError(null, 200), false)
+  })
+
+  it('detects incompatible model errors (text-input rejected)', () => {
+    assert.equal(isIncompatibleModelError('Content cannot be a plain string. The model does not support text input.', 400), true)
+    assert.equal(isIncompatibleModelError('{"object":"error","message":"Content cannot be a plain string. The model does not support text input. Content cannot be a plain string. The model does not support text input.","type":"BadRequestError"}', 400), true)
+    assert.equal(isIncompatibleModelError('Rate limit exceeded', 429), false)
+    assert.equal(isIncompatibleModelError('Payment required', 402), false)
+    assert.equal(isIncompatibleModelError(null, 400), false)
+  })
+
+  describe('shouldKeepUpAfterFailedProbe', () => {
+    const now = 1_800_000_000_000
+    const H = 3_600_000
+    const base = {
+      status: 'up', code: '000', lastServedAt: now - 2 * H, now,
+      keepUpMs: H, timeoutGraceMs: 6 * H,
+    }
+
+    it('keeps a recently-served model up on any failed probe', () => {
+      assert.equal(shouldKeepUpAfterFailedProbe({ ...base, code: '500', lastServedAt: now - 10 * 60_000 }), true)
+      assert.equal(shouldKeepUpAfterFailedProbe({ ...base, code: '401', lastServedAt: now - 5 * 60_000 }), true)
+    })
+
+    it('treats a timeout as non-authoritative within the longer grace window', () => {
+      // Fast pings (2h stale) + timeout probe: endpoint looks "down" to a 30s
+      // probe but answered a test 2h ago — must stay up (the user's scenario).
+      assert.equal(shouldKeepUpAfterFailedProbe({ ...base, code: '000', lastServedAt: now - 2 * H }), true)
+      // Outside the timeout grace the verdict applies.
+      assert.equal(shouldKeepUpAfterFailedProbe({ ...base, code: '000', lastServedAt: now - 7 * H }), false)
+      // Real errors are authoritative outside the short window, even in the
+      // timeout grace.
+      assert.equal(shouldKeepUpAfterFailedProbe({ ...base, code: '401', lastServedAt: now - 2 * H }), false)
+    })
+
+    it('only applies to up/pending rows with real liveness evidence', () => {
+      assert.equal(shouldKeepUpAfterFailedProbe({ ...base, status: 'down' }), false)
+      assert.equal(shouldKeepUpAfterFailedProbe({ ...base, status: 'timeout' }), false)
+      assert.equal(shouldKeepUpAfterFailedProbe({ ...base, lastServedAt: 0 }), false)
+      // 'pending' rows (fresh restart) with liveness evidence survive the first slow probe.
+      assert.equal(shouldKeepUpAfterFailedProbe({ ...base, status: 'pending' }), true)
+    })
+
+    it('never suppresses successful probes', () => {
+      assert.equal(shouldKeepUpAfterFailedProbe({ ...base, code: '200' }), false)
+    })
+  })
+
+  it('extracts max_tokens caps for test retries', () => {
+    assert.equal(parseMaxTokensCapFromError('`max_tokens` must be less than or equal to `8192`, the maximum value for `max_tokens` is less than the `context_window` for this model'), 8192)
+    assert.equal(parseMaxTokensCapFromError('max_tokens must be no more than 2048'), 2048)
+    // Other limit errors are not max_tokens caps
+    assert.equal(parseMaxTokensCapFromError("This model's maximum context length is 128000 tokens."), null)
+    assert.equal(parseMaxTokensCapFromError('some unrelated error'), null)
+    assert.equal(parseMaxTokensCapFromError(null), null)
   })
 
   it('detects over-length error text heuristically', () => {
@@ -3272,6 +3708,18 @@ describe('context window bounds (known + observed)', () => {
     assert.equal(parseEpochResetValue(''), null)
   })
 
+  it('parses relative retry delay durations', () => {
+    assert.ok(parseRetryDelayMs('37.712472835s') >= 37_000 && parseRetryDelayMs('37.712472835s') <= 38_000)
+    assert.equal(parseRetryDelayMs('1m30s'), 90_000)
+    assert.equal(parseRetryDelayMs('12ms'), 12)
+    assert.equal(parseRetryDelayMs('2h'), 7_200_000)
+    assert.equal(parseRetryDelayMs('120'), 120_000) // bare number = seconds
+    assert.equal(parseRetryDelayMs(30), 30_000)
+    assert.equal(parseRetryDelayMs(''), null)
+    assert.equal(parseRetryDelayMs('abc'), null)
+    assert.equal(parseRetryDelayMs(null), null)
+  })
+
   it('extracts rate-limit reset time from 429 headers and error bodies', () => {
     const body = JSON.stringify({
       error: {
@@ -3288,8 +3736,63 @@ describe('context window bounds (known + observed)', () => {
     const before = Date.now()
     const retry = extractRateLimitResetMs('', (name) => name === 'retry-after' ? '120' : null)
     assert.ok(retry >= before + 120_000 && retry <= before + 120_000 + 2000)
+    // OpenAI-style error.headers container
+    const oaStyle = JSON.stringify({ error: { message: 'quota', headers: { 'X-RateLimit-Reset': '1787530000000' } } })
+    assert.equal(extractRateLimitResetMs(oaStyle, () => null), 1_787_530_000_000)
+    // Gemini (Google) RESOURCE_EXHAUSTED shape: details[].RetryInfo.retryDelay
+    const geminiBody = JSON.stringify({
+      error: {
+        code: 429,
+        message: 'You exceeded your current quota',
+        status: 'RESOURCE_EXHAUSTED',
+        details: [
+          { '@type': 'type.googleapis.com/google.rpc.Help', links: [] },
+          {
+            '@type': 'type.googleapis.com/google.rpc.RetryInfo',
+            retryDelay: '37.712472835s',
+          },
+        ],
+      },
+    })
+    const geminiBefore = Date.now()
+    const geminiReset = extractRateLimitResetMs(geminiBody, () => null)
+    assert.ok(geminiReset != null)
+    assert.ok(geminiReset >= geminiBefore + 37_000 && geminiReset <= geminiBefore + 38_000)
     // Nothing parseable -> null
     assert.equal(extractRateLimitResetMs('some other error body', () => null), null)
     assert.equal(extractRateLimitResetMs(null, null), null)
+  })
+
+  it('extracts quota failure metadata from Gemini-style bodies', () => {
+    const body = JSON.stringify({
+      error: {
+        code: 429,
+        message: 'You exceeded your current quota',
+        status: 'RESOURCE_EXHAUSTED',
+        details: [
+          {
+            '@type': 'type.googleapis.com/google.rpc.QuotaFailure',
+            violations: [
+              {
+                quotaMetric: 'generativelanguage.googleapis.com/generate_content_free_tier_requests',
+                quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier',
+                quotaValue: '20',
+              },
+            ],
+          },
+          { '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '37s' },
+        ],
+      },
+    })
+    const quota = extractQuotaFailure(body)
+    assert.equal(quota.quotaId, 'GenerateRequestsPerDayPerProjectPerModel-FreeTier')
+    assert.equal(quota.quotaValue, '20')
+    assert.equal(quota.quotaMetric, 'generativelanguage.googleapis.com/generate_content_free_tier_requests')
+    // Nothing quota-related -> empty fields
+    const none = extractQuotaFailure(JSON.stringify({ error: { message: 'woops', code: 'invalid_request_error' } }))
+    assert.equal(none.quotaId, null)
+    assert.equal(none.quotaValue, null)
+    assert.equal(none.code, null)
+    assert.deepEqual(extractQuotaFailure('not json'), { code: null, quotaId: null, quotaValue: null, quotaMetric: null })
   })
 })

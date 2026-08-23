@@ -292,6 +292,11 @@ export const sources = {
     "url": "https://api.cerebras.ai/v1/chat/completions",
     "contextUrl": "https://api.cerebras.ai/public/v1/models?format=openrouter",
     "discoverable": true,
+    // Cerebras' /v1/models only reports a subset of what the free tier actually
+    // serves (confirmed live: 2 models via the public list), so keep the curated
+    // rows below even when discovery returns a healthy list. Most other providers
+    // leave this unset, making discovery authoritative and pruning retired models.
+    "keepStaticOnDiscovery": true,
     "models": [
       // Cerebras' own /v1/models?format=openrouter reports context_length: 131072 for this
       // model, and their docs claim 64k on the free tier -- but the live account this project
@@ -345,6 +350,8 @@ export const sources = {
   },
   "codestral": {
     "name": "Codestral",
+    // No public /v1/models endpoint exists on codestral.mistral.ai (verified: 404
+    // / no route); the list below is the complete static catalog. Kept manual.
     "url": "https://codestral.mistral.ai/v1/chat/completions",
     "contextUrl": "https://docs.mistral.ai/getting-started/models/models_overview/",
     "models": [
@@ -376,6 +383,8 @@ export const sources = {
   },
   "kiro": {
     "name": "Kiro",
+    // Proprietary EventStream API (no /v1/models surface) — the catalog below is
+    // the complete static list. Kept manual.
     "url": "https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse",
     "contextUrl": "https://kiro.dev/docs/cli/reference/models/",
     "models": [
