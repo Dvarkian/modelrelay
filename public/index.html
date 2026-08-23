@@ -843,11 +843,6 @@
       padding: 10px 12px;
     }
 
-    th:first-child, td:first-child {
-      width: 40px;
-      text-align: center;
-    }
-
     .table-header {
       padding: 20px 24px;
       border-bottom: 1px solid var(--border);
@@ -1037,7 +1032,63 @@
       border-bottom: none;
     }
 
+    /* Grouped table: each model gets a heading row above its provider rows */
+    tr.model-group-row td {
+      background: var(--surface-alt);
+      padding-top: 10px;
+      padding-bottom: 10px;
+    }
+
+    tr.model-group-row:not(:first-child) td {
+      border-top: 2px solid var(--border);
+    }
+
+    /* Indent provider sub-rows under their model heading */
+    tr[data-row-type="row"] td:first-child {
+      padding-left: 40px;
+    }
+
+    /* Fit the model table to its container: fixed layout with explicit column
+       proportions so every column (including the Response column) stays visible
+       without horizontal scrolling. Overwide content wraps or clips gracefully. */
+    .table-wrap table {
+      table-layout: fixed;
+      width: 100%;
+    }
+
+    .table-wrap th,
+    .table-wrap td {
+      overflow: hidden;
+      vertical-align: middle;
+    }
+
+    .table-wrap th:nth-child(1),  .table-wrap td:nth-child(1)  { width: 20%; }
+    .table-wrap th:nth-child(2),  .table-wrap td:nth-child(2)  { width: 6%; }
+    .table-wrap th:nth-child(3),  .table-wrap td:nth-child(3)  { width: 6%; }
+    .table-wrap th:nth-child(4),  .table-wrap td:nth-child(4)  { width: 9%; }
+    .table-wrap th:nth-child(5),  .table-wrap td:nth-child(5)  { width: 9%; }
+    .table-wrap th:nth-child(6),  .table-wrap td:nth-child(6)  { width: 7%; }
+    .table-wrap th:nth-child(7),  .table-wrap td:nth-child(7)  { width: 7%; }
+    .table-wrap th:nth-child(8),  .table-wrap td:nth-child(8)  { width: 14%; }
+    .table-wrap th:nth-child(9),  .table-wrap td:nth-child(9)  { width: 7%; }
+    .table-wrap th:nth-child(10), .table-wrap td:nth-child(10) { width: 14%; }
+
+    /* Model column: let names/subtitles wrap instead of clipping */
+    .table-wrap td:first-child {
+      white-space: normal;
+    }
+
+    /* Long model/provider names ellipsize inside the name+pin flex row */
+    .table-wrap td:first-child div[style*="display:flex"] span:first-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+      flex: 0 1 auto;
+    }
+
     @media (max-width: 640px) {
+      /* Phones: fall back to a scrollable table with readable columns */
       .table-wrap table {
         table-layout: auto;
         min-width: 720px;
@@ -1161,21 +1212,6 @@
         transform: scale(2.5);
         opacity: 0;
       }
-    }
-
-    .expand-btn {
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 20px;
-      height: 20px;
-      border-radius: 4px;
-      transition: background 0.2s;
-    }
-
-    .expand-btn:hover {
-      background: var(--surface-alt);
     }
 
     /* Switch Component */
@@ -1518,6 +1554,82 @@
       opacity: 1;
     }
 
+    /* Response column: Test button + last response text */
+    .test-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      align-items: flex-start;
+    }
+
+    .test-btn {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 2px 10px;
+      cursor: pointer;
+      line-height: 1.5;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+
+    .test-btn:hover:not(:disabled) {
+      color: var(--text-primary);
+      border-color: var(--accent);
+      background: var(--surface-hover);
+    }
+
+    .test-btn:disabled {
+      cursor: default;
+      opacity: 0.6;
+    }
+
+    .test-response {
+      font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+      font-size: 0.72rem;
+      line-height: 1.35;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 4.2em;
+      overflow: auto;
+      cursor: default;
+    }
+
+    .test-response.ok {
+      color: var(--success);
+    }
+
+    .test-response.err {
+      color: var(--error);
+    }
+
+    .test-meta {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Rate-limit countdown shown in the status column after a 429 test response */
+    .rl-countdown {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--warning);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      cursor: default;
+    }
+
+    /* Payment-required status shown in the status column after a 402 test response */
+    .paid-status {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--warning);
+      white-space: nowrap;
+      cursor: default;
+    }
+
     /* Collapsible log cards */
     .log-card {
       background: var(--card);
@@ -1817,8 +1929,9 @@
             </button>
             <div style="display:flex; align-items:center; gap:10px;">
               <div id="hover-pause-badge"
-                style="display:none; background:var(--warning); color:#1a0a00; padding:4px 8px; border-radius:6px; font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; align-items:center; gap:4px;">
-                ⏸ Paused on hover</div>
+                style="display:none; background:var(--warning); color:#1a0a00; padding:4px 8px; border-radius:6px; font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; align-items:center; gap:4px;"
+                title="Values keep updating; row order is locked while you hover.">
+                ⏸ Layout locked</div>
               <span style="font-size:0.8rem; color:var(--text-muted); cursor:pointer; user-select:none;"
                 onclick="document.getElementById('live-sort-toggle').click()">Live Sort</span>
               <label class="switch">
@@ -1898,7 +2011,6 @@
           onmouseleave="isTableHovered=false; document.getElementById('hover-pause-badge').style.display='none';">
           <thead>
             <tr>
-              <th></th>
               <th class="sortable" onclick="setSort('model')" id="th-model">Model <i class="sort-arrow"
                   id="arrow-model">↕</i></th>
               <th class="sortable" onclick="setSort('qos')" id="th-qos">QoS <i class="sort-arrow"
@@ -1907,10 +2019,16 @@
                   id="arrow-intell">↕</i></th>
               <th class="sortable text-right" onclick="setSort('ping')" id="th-ping">Ping <i
                   class="sort-arrow" id="arrow-ping">↕</i></th>
+              <th class="text-right" title="Average time to first token across real requests (seconds)">TTFT</th>
+              <th class="text-right" title="Average tokens per second across real requests">Tok/s</th>
+              <th class="sortable" onclick="setSort('ctx')" id="th-ctx"
+                title="Context window: known limit, or bounds inferred from real requests (e.g. >120k, <500k)">Context <i class="sort-arrow"
+                  id="arrow-ctx">↕</i></th>
               <th class="sortable text-right" onclick="setSort('availability')" id="th-availability">
                 Availability <i class="sort-arrow" id="arrow-availability">↕</i></th>
               <th class="sortable" onclick="setSort('status')" id="th-status">Status <i class="sort-arrow"
                   id="arrow-status">↕</i></th>
+              <th title="Click Test to ask the model to respond with the word Ready; the full response (or error) is shown here">Response</th>
             </tr>
           </thead>
           <tbody id="table-body">
@@ -2223,6 +2341,9 @@
     let sortState = null;
     let openDrawerModelId = null;
     let currentRenderedOrder = [];
+    // Row keys with a 'Test' request currently in flight (guards the Response cell
+    // against being clobbered by live polling re-renders while the test runs).
+    let inflightTests = new Set();
     let activePinnedModelId = null; // tracks the current pinned selection key
     let activePinnedProviderKey = null;
     let activePinnedRowKeys = []; // resolved pinned rows from server/client
@@ -2332,8 +2453,10 @@
         if (document.getElementById('settings-view').style.display !== 'none') {
           loadSettings();
         }
+        return true;
       } catch (e) {
         console.error('Fetch error:', e);
+        return false;
       }
     }
 
@@ -2814,7 +2937,7 @@
     }
 
     function updateSortHeaders() {
-      const cols = ['model', 'qos', 'intell', 'ping', 'availability', 'status'];
+      const cols = ['model', 'ctx', 'qos', 'intell', 'ping', 'availability', 'status'];
       const resetBtn = document.getElementById('sort-reset-btn');
       cols.forEach(col => {
         const th = document.getElementById(`th-${col}`);
@@ -2841,6 +2964,7 @@
         case 'rate': return m.isRateLimited ? 1 : 0;
         case 'health': return m.qos || 0; // fallback just in case
         case 'model': return (m.label || '').toLowerCase();
+        case 'ctx': return m.contextTokens || 0;
         default: return 0;
       }
     }
@@ -2869,10 +2993,10 @@
       return 0;
     }
 
-    function sortedModels(models) {
-      const arr = [...models];
+    // Compares two models using the current sortState (or the default chain when unset)
+    function compareModels(a, b) {
       if (!sortState) {
-        return arr.sort((a, b) => compareByChain(a, b, DEFAULT_SORT_CHAIN));
+        return compareByChain(a, b, DEFAULT_SORT_CHAIN);
       }
 
       const { col, dir } = sortState;
@@ -2881,23 +3005,191 @@
       // Build chain: primary column first, then the remaining default columns as tiebreakers
       const tiebreakers = DEFAULT_SORT_CHAIN.filter(c => c.col !== col);
 
-      return arr.sort((a, b) => {
-        const av = colValue(a, col);
-        const bv = colValue(b, col);
-        // Ping: Infinity always last regardless of sort direction
-        if (col === 'ping') {
-          if (av === Infinity && bv === Infinity) return compareByChain(a, b, tiebreakers);
-          if (av === Infinity) return 1;
-          if (bv === Infinity) return -1;
+      const av = colValue(a, col);
+      const bv = colValue(b, col);
+      // Ping: Infinity always last regardless of sort direction
+      if (col === 'ping') {
+        if (av === Infinity && bv === Infinity) return compareByChain(a, b, tiebreakers);
+        if (av === Infinity) return 1;
+        if (bv === Infinity) return -1;
+      }
+      const cmp = typeof av === 'string' ? av.localeCompare(bv) : (av - bv);
+      if (cmp !== 0) return sign * cmp;
+      return compareByChain(a, b, tiebreakers);
+    }
+
+    function sortedModels(models) {
+      return [...models].sort(compareModels);
+    }
+
+    function getModelGroupKey(m) {
+      const c = canonicalizeClientModelId(m.modelId);
+      return (c.unprefixed || m.modelId || '').toLowerCase();
+    }
+
+    // Strip the provider prefix (before '/') and runtime suffix (after ':') from
+    // heading model names so discovered ids like "nvidia/model:free" read cleanly.
+    function cleanHeadingModelName(name) {
+      if (!name) return name;
+      let n = String(name).trim();
+      const slash = n.indexOf('/');
+      if (slash !== -1) n = n.slice(slash + 1);
+      const colon = n.indexOf(':');
+      if (colon !== -1) n = n.slice(0, colon);
+      return n.trim();
+    }
+
+    function groupModels(models) {
+      const groups = new Map();
+      for (const m of models) {
+        const key = getModelGroupKey(m);
+        let g = groups.get(key);
+        if (!g) {
+          g = { key, label: m.label, canonicalId: canonicalizeClientModelId(m.modelId).base, members: [] };
+          groups.set(key, g);
         }
-        const cmp = typeof av === 'string' ? av.localeCompare(bv) : (av - bv);
-        if (cmp !== 0) return sign * cmp;
-        return compareByChain(a, b, tiebreakers);
-      });
+        g.members.push(m);
+      }
+
+      // The same model can be catalogued under different ids across providers
+      // (e.g. meta/llama-4-scout-17b-16e-instruct vs meta-llama/llama-4-scout-17b-16e-preview).
+      // Merge groups that resolve to the same display name so each model gets
+      // exactly one heading row with all of its providers underneath.
+      const byLabel = new Map();
+      for (const g of groups.values()) {
+        const labelKey = cleanHeadingModelName(g.label).toLowerCase();
+        if (!labelKey) {
+          byLabel.set('__id:' + g.key, g);
+          continue;
+        }
+        const existing = byLabel.get(labelKey);
+        if (existing) {
+          existing.members.push(...g.members);
+        } else {
+          byLabel.set(labelKey, g);
+        }
+      }
+      return [...byLabel.values()];
+    }
+
+    function sortedGroups(groups) {
+      return groups
+        .map(g => ({ ...g, members: [...g.members].sort(compareModels) }))
+        .sort((a, b) => {
+          const cmp = compareModels(a.members[0], b.members[0]);
+          if (cmp !== 0) return cmp;
+          return (a.label || '').localeCompare(b.label || '');
+        });
+    }
+
+    // Flattens sorted groups into heading rows followed by their provider rows
+    function buildExpanded(groups) {
+      const expanded = [];
+      for (const g of groups) {
+        expanded.push({ type: 'group', key: g.key, label: g.label, canonicalId: g.canonicalId, members: g.members });
+        for (const m of g.members) expanded.push({ type: 'row', m });
+      }
+      return expanded;
+    }
+
+    function getGroupSummary(g) {
+      const members = g.members;
+      let bestQos = 0, bestIntell = 0, bestUptime = 0;
+      let fastest = Infinity;
+      let minTtft = null, maxTps = null, bestCtx = null;
+      let bestIntellMember = members[0];
+      const upCount = members.filter(m => m.status === 'up').length;
+      for (const m of members) {
+        const q = Number(m.qos) || 0;
+        if (q > bestQos) bestQos = q;
+        const i = Number(m.intell) || 0;
+        if (i > bestIntell) { bestIntell = i; bestIntellMember = m; }
+        const u = Number(m.uptime) || 0;
+        if (u > bestUptime) bestUptime = u;
+        const p = m.avg;
+        if (p !== null && p !== Infinity && (fastest === Infinity || p < fastest)) fastest = p;
+        if (m.ttft != null && (minTtft === null || m.ttft < minTtft)) minTtft = m.ttft;
+        if (m.tps != null && (maxTps === null || m.tps > maxTps)) maxTps = m.tps;
+        const ctx = m.contextTokens;
+        if (ctx != null && (bestCtx === null || ctx > bestCtx)) bestCtx = ctx;
+      }
+      return { bestQos, bestIntell, bestUptime, fastest, minTtft, maxTps, bestCtx, upCount, bestIntellMember };
+    }
+
+    function groupRowInnerHTML(g) {
+      const members = g.members;
+      const s = getGroupSummary(g);
+      const first = members[0];
+      const isPinned = members.length > 0 && members.every(m => activePinnedRowKeys.includes(getModelRowKey(m)));
+      const fastest = s.fastest;
+      const hasPing = fastest !== null && fastest !== Infinity;
+      const statusColor = s.upCount === 0 ? 'var(--error)' : (s.upCount === members.length ? 'var(--success)' : 'var(--warning)');
+      const statusText = s.upCount === members.length ? 'All Up' : `${s.upCount}/${members.length} Up`;
+      const emoji = first.status === 'banned' ? '🚫 ' : (first.status === 'excluded' ? '⛔ ' : '');
+
+      return `
+          <td style="cursor:pointer;" onclick='openDrawer(${JSON.stringify(first).replace(/'/g, "&apos;")})'>
+            <div style="font-weight: 700; font-size: 0.92rem; display:flex; align-items:center; gap:8px;">
+              <span title="${escapeHtml(cleanHeadingModelName(g.label))}">${emoji}${escapeHtml(cleanHeadingModelName(g.label))}</span>
+              <span class="pin-row-btn ${isPinned ? 'pinned' : ''}" onclick="event.stopPropagation(); pinModel('${isPinned ? '' : first.modelId}', '')" title="${isPinned ? 'Unpin model' : 'Pin model'}">📌</span>
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(g.canonicalId)} • ${members.length} provider${members.length > 1 ? 's' : ''}</div>
+            <div class="model-tag-row">${renderModelTagChips(first.tags)}</div>
+          </td>
+          <td>
+            <div style="font-weight: 700; color: ${getQosColor(s.bestQos)}">${getQosDisplayValue(s.bestQos)}</div>
+          </td>
+          <td><div style="font-weight: 600;">${getBenchmarkTableDisplayValue(s.bestIntellMember.intell, s.bestIntellMember.qualitySource, s.bestIntellMember.qualityDetail)}</div></td>
+          <td class="text-right">
+            <div style="display: flex; align-items: center; gap: 8px; justify-content: flex-end;">
+              <div class="ping-dot ${hasPing ? 'active ' + getPingAnimClass(fastest) : ''}" style="--speed: ${getPingSpeed(fastest)}"></div>
+              <div style="font-variant-numeric: tabular-nums; text-align:right; line-height:1.3;">
+                ${hasPing
+          ? `<div style="font-size:0.82rem;">${fastest}ms</div><div style="font-size:0.7rem; color:var(--text-muted);">best</div>`
+          : '<span style="font-size: 0.75rem; color: var(--text-muted);">OFFLINE</span>'}
+              </div>
+            </div>
+          </td>
+          ${formatTtftCell(s.minTtft, 'best')}
+          ${formatTpsCell(s.maxTps, 'best')}
+          <td>
+            <div style="font-weight: 600; font-variant-numeric: tabular-nums;" title="Largest context window among providers">${s.bestCtx != null ? formatTokenCount(s.bestCtx) : '<span style="font-size:0.75rem;color:var(--text-muted);">—</span>'}</div>
+          </td>
+          <td class="text-right">
+            <div style="display: flex; align-items: center; gap: 12px; justify-content: flex-end;">
+              <div class="progress-pill">
+                <div class="progress-fill" style="width: ${s.bestUptime}%; background: ${s.bestUptime < 85 ? 'var(--warning)' : (s.bestUptime < 50 ? 'var(--error)' : 'var(--success)')}"></div>
+              </div>
+              <span style="font-size: 0.75rem; font-weight: 600;">${s.bestUptime}%</span>
+            </div>
+          </td>
+          <td>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="width: 6px; height: 6px; border-radius: 50%; background: ${statusColor}"></span>
+              <span style="font-size: 0.75rem; font-weight: 500;">${statusText}</span>
+            </div>
+          </td>
+          <td>${responseCellHTML(groupLastResponse(g), { rowKey: 'g:' + g.key, members: g.members, hasAuth: g.members.some(m => m.status !== 'noauth') })}</td>
+        `;
+    }
+
+    function createGroupRow(g) {
+      const tr = document.createElement('tr');
+      tr.className = 'model-group-row';
+      tr.dataset.rowType = 'group';
+      tr.dataset.rowKey = 'g:' + g.key;
+      tr.innerHTML = groupRowInnerHTML(g);
+      return tr;
+    }
+
+    function updateGroupRow(row, g) {
+      row.innerHTML = groupRowInnerHTML(g);
     }
 
     function render(isUserAction = false) {
-      if (!isUserAction && isTableHovered) return; // Pause updates if hovering over table
+      // While hovering, keep values live but lock row order so rows never
+      // reorder or rebuild under the user's cursor.
+      const hoverLocked = !isUserAction && isTableHovered;
       const tbody = document.getElementById('table-body');
 
       // 1. Apply Search
@@ -2955,112 +3247,430 @@
       }
 
       const liveSortOn = document.getElementById('live-sort-toggle').checked;
-      let sorted;
+      let expanded;
 
-      // When the user acts OR liveSort is checked OR it's the first paint, sort properly:
-      if (isUserAction || liveSortOn || currentRenderedOrder.length === 0) {
-        sorted = sortedModels(filtered);
+      // When the user acts OR liveSort is checked OR it's the first paint, sort properly.
+      // While hovering we also lock the order (values still refresh in place).
+      if (!hoverLocked && (isUserAction || liveSortOn || currentRenderedOrder.length === 0)) {
+        expanded = buildExpanded(sortedGroups(groupModels(filtered)));
       } else {
-        // Live sort is OFF: lock elements to their previously rendered positions,
-        // but allow new data updates. New models fall to bottom.
-        const orderMap = new Map(currentRenderedOrder.map((id, i) => [id, i]));
-        sorted = [...filtered].sort((a, b) => {
-          const idxA = orderMap.has(a.modelId) ? orderMap.get(a.modelId) : Infinity;
-          const idxB = orderMap.has(b.modelId) ? orderMap.get(b.modelId) : Infinity;
+        // Live sort is OFF: lock groups/rows to their previously rendered positions,
+        // but allow new data updates. New models/groups fall to the bottom.
+        const orderMap = new Map(currentRenderedOrder.map((key, i) => [key, i]));
+        const groups = groupModels(filtered);
+        groups.forEach(g => {
+          g.members.sort((a, b) => {
+            const idxA = orderMap.get(getModelRowKey(a)) ?? Infinity;
+            const idxB = orderMap.get(getModelRowKey(b)) ?? Infinity;
+            if (idxA !== Infinity && idxB !== Infinity) return idxA - idxB;
+            if (idxA !== Infinity) return -1;
+            if (idxB !== Infinity) return 1;
+            return compareByChain(a, b, DEFAULT_SORT_CHAIN);
+          });
+        });
+        groups.sort((a, b) => {
+          const idxA = orderMap.get('g:' + a.key) ?? Infinity;
+          const idxB = orderMap.get('g:' + b.key) ?? Infinity;
           if (idxA !== Infinity && idxB !== Infinity) return idxA - idxB;
           if (idxA !== Infinity) return -1;
           if (idxB !== Infinity) return 1;
-          return compareByChain(a, b, DEFAULT_SORT_CHAIN);
+          return compareByChain(a.members[0], b.members[0], DEFAULT_SORT_CHAIN);
         });
+        expanded = buildExpanded(groups);
       }
 
-      const newOrderIds = sorted.map(m => m.modelId).join(',');
-      const oldOrderIds = currentRenderedOrder.join(',');
+      const newOrderKeys = expanded.map(e => e.type === 'group' ? 'g:' + e.key : getModelRowKey(e.m));
       const currentRows = Array.from(tbody.rows);
 
-      // We only recreate DOM nodes if length changed or the exact visual order shifted
-      if (newOrderIds !== oldOrderIds || sorted.length !== currentRows.length) {
-        tbody.innerHTML = '';
-        sorted.forEach(m => tbody.appendChild(createRow(m)));
-        currentRenderedOrder = sorted.map(m => m.modelId);
+      // Fast path: same keys in the same order → update cells in place with no DOM churn.
+      if (currentRows.length === expanded.length &&
+          currentRows.every((row, i) => row.dataset.rowKey === newOrderKeys[i])) {
+        for (let i = 0; i < expanded.length; i++) {
+          const e = expanded[i];
+          const rk = e.type === 'group' ? 'g:' + e.key : getModelRowKey(e.m);
+          if (inflightTests.has(rk)) continue; // don't clobber a Test in progress
+          if (e.type === 'group') updateGroupRow(currentRows[i], e);
+          else updateRowCells(currentRows[i], e.m);
+        }
+        currentRenderedOrder = newOrderKeys;
         return;
       }
 
-      // Update existing rows
-      sorted.forEach((m, i) => {
-        const row = currentRows[i];
-        const hasPing = m.avg !== Infinity && m.avg !== null;
+      // Order or length changed: reconcile keyed, reusing surviving row elements so
+      // ping animations, hover state and scroll position are preserved.
+      reconcileTable(tbody, expanded, newOrderKeys);
+      currentRenderedOrder = newOrderKeys;
+    }
 
-        // Update pin button state in first cell
-        const pinBtn = row.cells[0].querySelector('.pin-row-btn');
-        if (pinBtn) {
-          const isPinnedRow = activePinnedRowKeys.includes(getModelRowKey(m));
-          pinBtn.className = 'pin-row-btn' + (isPinnedRow ? ' pinned' : '');
-          pinBtn.onclick = () => pinModel(isPinnedRow ? '' : m.modelId, m.providerKey);
-          pinBtn.title = isPinnedRow ? 'Unpin model' : 'Pin model';
-        }
+    // Keyed reconciliation: match existing rows by data-row-key, reuse them in place
+    // (updating their cells), create rows for new keys, move only the rows whose
+    // position actually changed, and drop rows that no longer exist. Unmoved rows
+    // are never detached, so their ping-dot animations keep running uninterrupted.
+    function reconcileTable(tbody, expanded, newOrderKeys) {
+      const existing = new Map();
+      for (const row of Array.from(tbody.rows)) existing.set(row.dataset.rowKey, row);
 
-        // Update model name cell (ban status can change)
-        const modelCell = row.cells[1];
-        const isBannedRow = m.status === 'banned';
-        const isExcludedRow = m.status === 'excluded';
-        row.style.opacity = isExcludedRow || isBannedRow ? '0.5' : '1';
-        modelCell.querySelector('div').firstChild.textContent = (isBannedRow ? '🚫 ' : (isExcludedRow ? '⛔ ' : '')) + m.label;
-        const tagRow = modelCell.querySelector('.model-tag-row');
-        if (tagRow) tagRow.innerHTML = renderModelTagChips(m.tags);
-        modelCell.onclick = () => openDrawer(m);
-
-        // Update QoS
-        const qosCell = row.cells[2];
-        qosCell.innerHTML = `<div style="font-weight: 700; color: ${getQosColor(m.qos)}">${getQosDisplayValue(m.qos)}</div>`;
-
-        // Update coding quality score
-        const intellCell = row.cells[3];
-        intellCell.innerHTML = `<div style="font-weight: 600;">${getBenchmarkTableDisplayValue(m.intell, m.qualitySource, m.qualityDetail)}</div>`;
-
-        // Update status dot and text
-        const statusCell = row.cells[6];
-        statusCell.innerHTML = `
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <span style="width: 6px; height: 6px; border-radius: 50%; background: ${m.status === 'up' ? 'var(--success)' : (m.status === 'disabled' || m.status === 'banned' || m.status === 'excluded') ? 'var(--text-muted)' : 'var(--error)'}"></span>
-              <span style="font-size: 0.75rem; font-weight: 500; text-transform: capitalize;">${m.status === 'noauth' ? 'No Auth' : m.status}</span>
-            </div>
-          `;
-
-        // Update ping
-        const pingCell = row.cells[4];
-        const pingDot = pingCell.querySelector('.ping-dot');
-        const pingTextEl = pingCell.querySelector('div[style*="text-align"]') || pingCell.querySelector('div:last-child');
-        if (hasPing) {
-          if (pingDot) {
-            pingDot.className = 'ping-dot active ' + getPingAnimClass(m.avg);
-            pingDot.style.setProperty('--speed', getPingSpeed(m.avg));
+      const removed = new Set(existing.keys());
+      let anchor = null; // last row placed in the target order
+      for (let i = 0; i < expanded.length; i++) {
+        const e = expanded[i];
+        const key = newOrderKeys[i];
+        let row = existing.get(key);
+        if (row) {
+          if (!inflightTests.has(key)) {
+            if (e.type === 'group') updateGroupRow(row, e);
+            else updateRowCells(row, e.m);
           }
-          if (pingTextEl) pingTextEl.innerHTML = `<div style="font-size:0.82rem;">${m.avg}ms</div><div style="font-size:0.7rem; color:var(--text-muted);">(${m.lastPing}ms)</div>`;
+          removed.delete(key);
         } else {
-          if (pingDot) pingDot.className = 'ping-dot';
-          if (pingTextEl) pingTextEl.innerHTML = '<span style="font-size: 0.75rem; color: var(--text-muted);">OFFLINE</span>';
+          row = e.type === 'group' ? createGroupRow(e) : createRow(e.m);
         }
-
-        // Update uptime and rate icon
-        const uptimeCell = row.cells[5];
-        const uptimeContainer = uptimeCell.querySelector('div');
-        uptimeContainer.style.justifyContent = 'flex-end';
-        uptimeContainer.querySelector('.progress-fill').style.width = m.uptime + '%';
-        uptimeCell.querySelector('.progress-fill').style.background = m.uptime < 85 ? 'var(--warning)' : (m.uptime < 50 ? 'var(--error)' : 'var(--success)');
-        uptimeCell.querySelector('.uptime-text').textContent = m.uptime + '%';
-
-        const rateIcon = uptimeCell.querySelector('.rate-icon');
-        if (rateIcon) {
-          rateIcon.textContent = m.isRateLimited ? '🕑' : '✅';
-          rateIcon.title = m.isRateLimited ? 'Rate limit exceeded, waiting to reset' : 'Rate available';
-          rateIcon.style.opacity = '1';
+        if (anchor === null) {
+          if (tbody.firstChild !== row) tbody.insertBefore(row, tbody.firstChild);
+        } else if (anchor.nextSibling !== row) {
+          tbody.insertBefore(row, anchor.nextSibling);
         }
+        anchor = row;
+      }
+      for (const key of removed) {
+        const row = existing.get(key);
+        if (row && row.parentNode === tbody) row.remove();
+      }
+    }
+
+    function updateRowCells(row, m) {
+      const hasPing = m.avg !== Infinity && m.avg !== null;
+
+      // Update provider name + pin button (ban status can change)
+      const modelCell = row.cells[0];
+      const isBannedRow = m.status === 'banned';
+      const isExcludedRow = m.status === 'excluded';
+      row.style.opacity = isExcludedRow || isBannedRow ? '0.5' : '1';
+      const nameSpan = modelCell.querySelector('span');
+      if (nameSpan) { nameSpan.textContent = m.providerKey; nameSpan.title = m.providerKey; }
+      const pinBtn = modelCell.querySelector('.pin-row-btn');
+      if (pinBtn) {
+        const isPinnedRow = activePinnedRowKeys.includes(getModelRowKey(m));
+        pinBtn.className = 'pin-row-btn' + (isPinnedRow ? ' pinned' : '');
+        pinBtn.onclick = (e) => { e.stopPropagation(); pinModel(isPinnedRow ? '' : m.modelId, m.providerKey); };
+        pinBtn.title = isPinnedRow ? 'Unpin model' : 'Pin model';
+      }
+      modelCell.onclick = () => openDrawer(m);
+
+      // Update context window (known limit or observed bounds)
+      const ctxCell = row.cells[6];
+      ctxCell.innerHTML = m.context
+        ? `<div style="font-weight: 600; font-variant-numeric: tabular-nums;" title="${m.contextSource === 'observed' ? 'Bounds inferred from real requests' : 'Known context window'}">${escapeHtml(m.context)}</div>`
+        : '<div style="font-weight: 600; font-variant-numeric: tabular-nums;"><span style="font-size:0.75rem;color:var(--text-muted);">—</span></div>';
+
+      // Update QoS
+      const qosCell = row.cells[1];
+      qosCell.innerHTML = `<div style="font-weight: 700; color: ${getQosColor(m.qos)}">${getQosDisplayValue(m.qos)}</div>`;
+
+      // Update coding quality score
+      const intellCell = row.cells[2];
+      intellCell.innerHTML = `<div style="font-weight: 600;">${getBenchmarkTableDisplayValue(m.intell, m.qualitySource, m.qualityDetail)}</div>`;
+
+      // Update response cell (Test button + last response); never clobber an in-flight test
+      if (row.cells[9]) updateResponseCellIfIdle(row.cells[9], m);
+
+      // Update status dot and text (plus rate-limit countdown when a test 429'd)
+      const statusCell = row.cells[8];
+      statusCell.innerHTML = statusCellHTML(m);
+
+      // Update ping
+      const pingCell = row.cells[3];
+      const pingDot = pingCell.querySelector('.ping-dot');
+      const pingTextEl = pingCell.querySelector('div[style*="text-align"]') || pingCell.querySelector('div:last-child');
+      if (hasPing) {
+        if (pingDot) {
+          pingDot.className = 'ping-dot active ' + getPingAnimClass(m.avg);
+          pingDot.style.setProperty('--speed', getPingSpeed(m.avg));
+        }
+        if (pingTextEl) pingTextEl.innerHTML = `<div style="font-size:0.82rem;">${m.avg}ms</div><div style="font-size:0.7rem; color:var(--text-muted);">(${m.lastPing}ms)</div>`;
+      } else {
+        if (pingDot) pingDot.className = 'ping-dot';
+        if (pingTextEl) pingTextEl.innerHTML = '<span style="font-size: 0.75rem; color: var(--text-muted);">OFFLINE</span>';
+      }
+
+      // Update TTFT and tokens/sec (real usage stats)
+      const ttftCell = row.cells[4];
+      ttftCell.innerHTML = m.ttft != null
+        ? `<div style="font-size:0.82rem;">${formatSecondsFromMs(m.ttft)}</div><div style="font-size:0.7rem; color:var(--text-muted);">avg</div>`
+        : '<span style="font-size: 0.75rem; color: var(--text-muted);">—</span>';
+      const tpsCell = row.cells[5];
+      tpsCell.innerHTML = m.tps != null
+        ? `<div style="font-size:0.82rem;">${m.tps}</div><div style="font-size:0.7rem; color:var(--text-muted);">tok/s</div>`
+        : '<span style="font-size: 0.75rem; color: var(--text-muted);">—</span>';
+
+      // Update uptime and rate icon
+      const uptimeCell = row.cells[7];
+      const uptimeContainer = uptimeCell.querySelector('div');
+      uptimeContainer.style.justifyContent = 'flex-end';
+      uptimeContainer.querySelector('.progress-fill').style.width = m.uptime + '%';
+      uptimeCell.querySelector('.progress-fill').style.background = m.uptime < 85 ? 'var(--warning)' : (m.uptime < 50 ? 'var(--error)' : 'var(--success)');
+      uptimeCell.querySelector('.uptime-text').textContent = m.uptime + '%';
+
+      // Rate icon only makes sense when the model is actually up; hide it otherwise
+      let rateIcon = uptimeCell.querySelector('.rate-icon');
+      if (m.status === 'up') {
+        if (!rateIcon) {
+          uptimeContainer.insertAdjacentHTML('beforeend', '<span class="rate-icon" style="font-size:1.1rem; opacity:1;"></span>');
+          rateIcon = uptimeCell.querySelector('.rate-icon');
+        }
+        rateIcon.textContent = m.isRateLimited ? '🕑' : '✅';
+        rateIcon.title = m.isRateLimited ? 'Rate limit exceeded, waiting to reset' : 'Rate available';
+        rateIcon.style.opacity = '1';
+      } else if (rateIcon) {
+        rateIcon.remove();
+      }
+    }
+
+    // Formats a raw token count like the catalog's context strings: "128k", "1.5M", "32000".
+    function formatTokenCount(n) {
+      const value = Number(n);
+      if (!Number.isFinite(value) || value <= 0) return null;
+      if (value >= 1_000_000) return `${Math.round(value / 100_000) / 10}M`;
+      if (value >= 1_000) return `${Math.round(value / 1_000)}k`;
+      return String(Math.round(value));
+    }
+
+    // Convert a milliseconds value to a seconds string (e.g. 8913 -> "8.91s").
+    // Returns null for null/undefined/non-finite so callers can render their own placeholder.
+    function formatSecondsFromMs(ms) {
+      if (ms == null) return null;
+      const s = Number(ms) / 1000;
+      if (!Number.isFinite(s)) return null;
+      return (s >= 10 ? s.toFixed(1) : s.toFixed(2)) + 's';
+    }
+
+    function formatTtftCell(ttft, sub) {
+      return `<td class="text-right">
+        <div style="font-variant-numeric: tabular-nums; text-align:right; line-height:1.3;">
+          ${ttft != null ? `<div style="font-size:0.82rem;">${formatSecondsFromMs(ttft)}</div><div style="font-size:0.7rem; color:var(--text-muted);">${sub}</div>` : '<span style="font-size: 0.75rem; color: var(--text-muted);">—</span>'}
+        </div>
+      </td>`;
+    }
+
+    function formatTpsCell(tps, sub) {
+      return `<td class="text-right">
+        <div style="font-variant-numeric: tabular-nums; text-align:right; line-height:1.3;">
+          ${tps != null ? `<div style="font-size:0.82rem;">${tps}</div><div style="font-size:0.7rem; color:var(--text-muted);">${sub}</div>` : '<span style="font-size: 0.75rem; color: var(--text-muted);">—</span>'}
+        </div>
+      </td>`;
+    }
+
+    // Returns the most recent successful test response across a group's members (for
+    // heading rows). Errors are never propagated to the heading — they stay on the
+    // provider row that produced them.
+    function groupLastResponse(g) {
+      let latest = null;
+      for (const m of g.members) {
+        const lr = m.lastResponse;
+        if (!lr || lr.error) continue;
+        if (!latest || (lr.at || 0) > (latest.at || 0)) latest = lr;
+      }
+      return latest;
+    }
+
+    // Builds the Response cell: a Test button plus (when present) the last response text.
+    // opts: { rowKey, providerKey?, modelId?, members? } — members takes precedence and
+    // makes the button test the whole group via the router's QoS ranking.
+    function responseCellHTML(lastResponse, opts) {
+      // Models with no API key / auth configured get no Test button at all.
+      if (opts && opts.hasAuth === false) {
+        return '<div class="test-cell"><span class="test-meta" style="color:var(--text-muted);">—</span></div>';
+      }
+      const args = (opts && opts.members && opts.members.length > 0)
+        ? { rowKey: opts.rowKey, members: opts.members.map(x => ({ providerKey: x.providerKey, modelId: x.modelId })) }
+        : { rowKey: opts.rowKey, providerKey: opts.providerKey, modelId: opts.modelId };
+      const btnArgs = JSON.stringify(args).replace(/"/g, '&quot;');
+      const btn = `<button class="test-btn" onclick="event.stopPropagation(); testModelButton(this, ${btnArgs})" title="Send 'Respond with exactly the single word: Ready' to this model">Test</button>`;
+      if (!lastResponse) return `<div class="test-cell">${btn}</div>`;
+      // Timeout errors carry an expiry; once it passes, treat the result as absent
+      // so a stale timeout no longer populates the test result field.
+      const expired = lastResponse.expiresAt != null && Date.now() > Number(lastResponse.expiresAt);
+      const errText = !expired && lastResponse.error ? String(lastResponse.error) : '';
+      const okText = !errText && !expired && lastResponse.text != null ? String(lastResponse.text) : '';
+      const text = errText || okText;
+      const titleAttr = escapeHtml(text).replace(/"/g, '&quot;');
+      // Show the number of tokens the model actually returned; nothing else.
+      const meta = !expired && lastResponse.tokens != null
+        ? `<div class="test-meta">${lastResponse.tokens} token${lastResponse.tokens === 1 ? '' : 's'}</div>`
+        : '';
+      const expAttr = lastResponse.expiresAt != null ? ` data-expires-at="${lastResponse.expiresAt}"` : '';
+      const body = text
+        ? `<div class="test-response ${errText ? 'err' : 'ok'}"${expAttr} title="${titleAttr}">${escapeHtml(text)}</div>`
+        : (errText ? `<div class="test-response err"${expAttr}>HTTP ${lastResponse.status}</div>` : '');
+      return `<div class="test-cell">${btn}${body}${meta}</div>`;
+    }
+
+    // In-place refresher for the Response cell during live polling; never clobbers
+    // a Test request that is currently in flight.
+    function updateResponseCellIfIdle(cell, m) {
+      if (inflightTests.has(getModelRowKey(m))) return;
+      cell.innerHTML = responseCellHTML(m.lastResponse, {
+        rowKey: getModelRowKey(m),
+        providerKey: m.providerKey,
+        modelId: m.modelId,
+        hasAuth: m.status !== 'noauth',
       });
     }
 
+    // Handles a Test button click: asks the model to respond with the word Ready,
+    // writes the full response (or error) into the cell, then refreshes the table so
+    // TTFT / Tok/s / Context pick up the stats recorded from this response.
+    async function testModelButton(btn, opts) {
+      const cell = btn.closest('td');
+      const rowKey = opts && opts.rowKey;
+      if (!cell || !rowKey || inflightTests.has(rowKey)) return;
+      inflightTests.add(rowKey);
+      cell.innerHTML = '<div class="test-cell"><button class="test-btn" disabled>⏳ Testing…</button></div>';
+      try {
+        const res = await fetch('/api/test-model', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(opts.members && opts.members.length > 0
+            ? { members: opts.members }
+            : { providerKey: opts.providerKey, modelId: opts.modelId }),
+        });
+        let data;
+        try {
+          data = await res.json();
+        } catch {
+          data = { ok: false, error: `HTTP ${res.status}`, status: res.status };
+        }
+        const lastResponse = {
+          text: data.text != null ? data.text : null,
+          error: data.error != null ? data.error : null,
+          status: data.status != null ? data.status : (data.ok ? 200 : 0),
+          at: Date.now(),
+          ttftMs: data.ttftMs != null ? data.ttftMs : null,
+          tps: data.tps != null ? data.tps : null,
+          tokens: data.tokens != null ? data.tokens : null,
+          expiresAt: data.expiresAt != null ? data.expiresAt : null,
+        };
+        // Errors from a group test never propagate to the heading row — render the
+        // plain Test button there instead; the error lives on the provider row.
+        const isGroupTest = opts && opts.members && opts.members.length > 0;
+        cell.innerHTML = (isGroupTest && lastResponse.error)
+          ? responseCellHTML(null, opts)
+          : responseCellHTML(lastResponse, opts);
+      } catch (err) {
+        cell.innerHTML = responseCellHTML({
+          text: null,
+          error: err?.message || 'Network error',
+          status: 0,
+          at: Date.now(),
+          ttftMs: null,
+          tps: null,
+          tokens: null,
+        }, opts);
+      } finally {
+        inflightTests.delete(rowKey);
+        fetchData(); // refresh TTFT / Tok/s / Context from this response
+      }
+    }
+
+    // Epoch-ms reset time from the most recent test response, or null.
+    function getRateLimitResetAt(m) {
+      const v = m && m.lastResponse && m.lastResponse.rateLimitResetAt;
+      if (v == null) return null;
+      const n = Number(v);
+      if (!Number.isFinite(n) || n <= 0) return null;
+      return n;
+    }
+
+    // mm:ss (or h mm) countdown for a remaining ms duration.
+    function formatCountdown(ms) {
+      const total = Math.max(0, Math.floor(Number(ms) / 1000));
+      const h = Math.floor(total / 3600);
+      const m = Math.floor((total % 3600) / 60);
+      const s = total % 60;
+      if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
+      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    // Local clock time for the tooltip, e.g. "3:45 PM".
+    function formatClockTime(epochMs) {
+      try {
+        return new Date(epochMs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      } catch {
+        return '';
+      }
+    }
+
+    // Builds the status cell: dot + status text, or — when the most recent test
+    // response carried a rate-limit reset time still in the future — just the clock
+    // + countdown; a payment-required result shows a dollar icon + 'Paid' instead.
+    // The status text is suppressed while these special states show, so 'down'
+    // never sits next to them; the plain status is restored when they clear.
+    function statusCellHTML(m) {
+      const dotColor = m.status === 'up' ? 'var(--success)'
+        : (m.status === 'disabled' || m.status === 'banned' || m.status === 'excluded') ? 'var(--text-muted)'
+        : 'var(--error)';
+      const statusText = m.status === 'noauth' ? 'No Auth' : m.status;
+      // Payment required (402 from a test): dollar icon + 'Paid', persists via lastResponse
+      if (m.lastResponse && m.lastResponse.paymentRequired === true) {
+        return `
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="paid-status" title="Payment required — add billing to use this model">💲 Paid</span>
+            </div>`;
+      }
+      const resetAt = getRateLimitResetAt(m);
+      if (resetAt != null) {
+        return `
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="rl-countdown" data-reset-at="${resetAt}" data-status-dot="${dotColor}" data-status-text="${statusText}" title="Rate limited — resets ${formatClockTime(resetAt)}">🕑 ${formatCountdown(resetAt - Date.now())}</span>
+            </div>`;
+      }
+      return `
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="width: 6px; height: 6px; border-radius: 50%; background: ${dotColor}"></span>
+              <span style="font-size: 0.75rem; font-weight: 500; text-transform: capitalize;">${statusText}</span>
+            </div>`;
+    }
+
+    // Runs once per second: ticks rate-limit countdowns, restores plain status on
+    // rate-limit expiry, and clears timeout errors once their window has passed.
+    function updateRateLimitCountdowns() {
+      const now = Date.now();
+      // Clear timeout errors once their expiry has passed, leaving just the Test button
+      document.querySelectorAll('.test-response[data-expires-at]').forEach(el => {
+        const exp = Number(el.dataset.expiresAt || 0);
+        if (exp > 0 && now > exp) {
+          const cell = el.closest('.test-cell');
+          if (cell) {
+            const meta = cell.querySelector('.test-meta');
+            if (meta) meta.remove();
+            el.remove();
+          }
+        }
+      });
+      document.querySelectorAll('.rl-countdown').forEach(el => {
+        const resetAt = Number(el.dataset.resetAt || 0);
+        const remaining = resetAt - now;
+        if (remaining <= 0) {
+          const dot = el.dataset.statusDot;
+          const txt = el.dataset.statusText;
+          const cell = el.closest('td');
+          if (cell && dot && txt) {
+            cell.innerHTML = `<div style="display:flex; align-items:center; gap:6px;"><span style="width:6px;height:6px;border-radius:50%;background:${dot}"></span><span style="font-size:0.75rem;font-weight:500;text-transform:capitalize;">${txt}</span></div>`;
+          } else {
+            el.remove();
+          }
+        } else {
+          el.textContent = '🕑 ' + formatCountdown(remaining);
+          el.title = `Rate limited — resets ${formatClockTime(resetAt)}`;
+        }
+      });
+    }
+    setInterval(updateRateLimitCountdowns, 1000);
+
     function createRow(m) {
       const tr = document.createElement('tr');
+      tr.dataset.rowType = 'row';
+      tr.dataset.rowKey = getModelRowKey(m);
       tr.style.opacity = m.status === 'excluded' || m.status === 'banned' ? '0.5' : '1';
       const hasPing = m.avg !== Infinity && m.avg !== null;
       const pingClass = getPingAnimClass(m.avg);
@@ -3068,18 +3678,11 @@
 
       const isPinnedRow = activePinnedRowKeys.includes(getModelRowKey(m));
       tr.innerHTML = `
-          <td>
-            <div style="display:flex; flex-direction:column; gap:2px; align-items:center;">
-              <div class="expand-btn" onclick='openDrawer(${escapeHtml(JSON.stringify(m))})'>
-                <svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 2v8M2 6h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-              </div>
-              <div class="pin-row-btn ${isPinnedRow ? 'pinned' : ''}" onclick="pinModel(${jsStringAttr(isPinnedRow ? '' : m.modelId)}, ${jsStringAttr(m.providerKey)})" title="${isPinnedRow ? 'Unpin model' : 'Pin model'}">📌</div>
+          <td style="cursor:pointer;" onclick='openDrawer(${JSON.stringify(m).replace(/'/g, "&apos;")})'>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-weight: 600;" title="${escapeHtml(m.providerKey)}">${m.providerKey}</span>
+              <span class="pin-row-btn ${isPinnedRow ? 'pinned' : ''}" onclick="event.stopPropagation(); pinModel('${isPinnedRow ? '' : m.modelId}', '${m.providerKey}')" title="${isPinnedRow ? 'Unpin model' : 'Pin model'}">📌</span>
             </div>
-          </td>
-          <td style="cursor:pointer;" onclick='openDrawer(${escapeHtml(JSON.stringify(m))})'>
-            <div style="font-weight: 600;">${m.status === 'banned' ? '🚫 ' : (m.status === 'excluded' ? '⛔ ' : '')}${escapeHtml(m.label)}</div>
-            <div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(m.providerKey)}</div>
-            <div class="model-tag-row">${renderModelTagChips(m.tags)}</div>
           </td>
           <td>
             <div style="font-weight: 700; color: ${getQosColor(m.qos)}">${getQosDisplayValue(m.qos)}</div>
@@ -3095,21 +3698,22 @@
               </div>
             </div>
           </td>
+          ${formatTtftCell(m.ttft, 'avg')}
+          ${formatTpsCell(m.tps, 'tok/s')}
+          <td>
+            <div style="font-weight: 600; font-variant-numeric: tabular-nums;" title="${m.contextSource === 'observed' ? 'Bounds inferred from real requests' : (m.context ? 'Known context window' : 'No context data yet — will fill in as the model is used')}">${m.context ? escapeHtml(m.context) : '<span style="font-size:0.75rem;color:var(--text-muted);">—</span>'}</div>
+          </td>
           <td class="text-right">
             <div style="display: flex; align-items: center; gap: 12px; justify-content: flex-end;">
               <div class="progress-pill">
                 <div class="progress-fill" style="width: ${m.uptime}%; background: ${m.uptime < 85 ? 'var(--warning)' : (m.uptime < 50 ? 'var(--error)' : 'var(--success)')}"></div>
               </div>
               <span class="uptime-text" style="font-size: 0.75rem; font-weight: 600;">${m.uptime}%</span>
-              <span class="rate-icon" style="font-size:1.1rem; opacity: 1;" title="${m.isRateLimited ? 'Rate limit exceeded, waiting to reset' : 'Rate available'}">${m.isRateLimited ? '🕑' : '✅'}</span>
+              ${m.status === 'up' ? `<span class="rate-icon" style="font-size:1.1rem; opacity: 1;" title="${m.isRateLimited ? 'Rate limit exceeded, waiting to reset' : 'Rate available'}">${m.isRateLimited ? '🕑' : '✅'}</span>` : ''}
             </div>
           </td>
-          <td>
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <span style="width: 6px; height: 6px; border-radius: 50%; background: ${m.status === 'up' ? 'var(--success)' : (m.status === 'disabled' || m.status === 'banned' || m.status === 'excluded') ? 'var(--text-muted)' : 'var(--error)'}"></span>
-              <span style="font-size: 0.75rem; font-weight: 500; text-transform: capitalize;">${m.status === 'noauth' ? 'No Auth' : m.status}</span>
-            </div>
-          </td>
+          <td>${statusCellHTML(m)}</td>
+          <td>${responseCellHTML(m.lastResponse, { rowKey: getModelRowKey(m), providerKey: m.providerKey, modelId: m.modelId, hasAuth: m.status !== 'noauth' })}</td>
         `;
       return tr;
     }
@@ -5218,7 +5822,7 @@
                       <span>${escapeHtml(l.provider || 'unknown provider')}</span>
                       ${hadFailover ? `<span>•</span><span style="color: var(--warning); font-weight: 600;">🔁 ${retryCount} failover${retryCount > 1 ? 's' : ''}</span>` : ''}
                       ${l.duration ? `<span>•</span><span>${l.duration}ms total</span>` : ''}
-                      ${l.ttft != null && l.ttft !== l.duration ? `<span>•</span><span style="color: var(--accent);">⚡ ${l.ttft}ms TTFT</span>` : ''}
+                      ${l.ttft != null && l.ttft !== l.duration ? `<span>•</span><span style="color: var(--accent);">⚡ ${formatSecondsFromMs(l.ttft)} TTFT</span>` : ''}
                       ${l.prompt_tokens != null || l.completion_tokens != null ? `<span>•</span><span style="color: var(--text-muted);"><span style="font-weight: 600; color: var(--text);">${l.prompt_tokens || 0}</span> in / <span style="font-weight: 600; color: var(--text);">${l.completion_tokens || 0}</span> out</span>` : ''}
                     </div>
                   </div>
@@ -5524,7 +6128,8 @@
           </div>
           <div style="background: var(--chat-bg); padding: 16px; border-radius: 12px; border: 1px solid var(--border);">
             <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Context</div>
-            <div style="font-weight: 700;">${formatContextDisplay(m.ctx)}</div>
+            <div style="font-weight: 700;">${m.context ? escapeHtml(m.context) : 'N/A'}</div>
+            <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 6px;">${m.contextSource === 'observed' ? 'Bounds inferred from real requests' : (m.context ? 'Known context window' : 'Unknown — will fill in as the model is used')}</div>
           </div>
         </div>
         <div class="tag-workbench">
@@ -5664,8 +6269,43 @@
 
     initializeChat();
     updateLogsPauseButton();
-    setInterval(fetchData, 4000);
-    fetchData();
+
+    // Self-scheduling poll loop: never overlaps a slow fetch, skips hidden tabs,
+    // refreshes immediately when the tab becomes visible again, and backs off on
+    // repeated failures so an outage doesn't hammer the server.
+    const POLL_INTERVAL_MS = 4000;
+    const POLL_BACKOFF_MAX_MS = 30000;
+    let pollTimer = null;
+    let pollFailStreak = 0;
+    let pollInFlight = false;
+
+    function schedulePoll(delayMs) {
+      clearTimeout(pollTimer);
+      pollTimer = setTimeout(pollLoop, delayMs);
+    }
+
+    async function pollLoop() {
+      if (pollInFlight) return;
+      pollInFlight = true;
+      try {
+        if (!document.hidden) {
+          const ok = await fetchData();
+          pollFailStreak = ok ? 0 : pollFailStreak + 1;
+        }
+      } finally {
+        pollInFlight = false;
+        schedulePoll(Math.min(POLL_INTERVAL_MS * Math.pow(2, pollFailStreak), POLL_BACKOFF_MAX_MS));
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) {
+        fetchData(); // refresh immediately when the tab is shown again
+        schedulePoll(POLL_INTERVAL_MS);
+      }
+    });
+
+    schedulePoll(POLL_INTERVAL_MS);
   </script>
 </body>
 

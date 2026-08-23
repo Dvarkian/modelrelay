@@ -33,6 +33,16 @@ import {
   isLoopbackHostname,
   isLoopbackRemoteAddress,
   checkApiRequestAllowed,
+  accumulateUsageSample,
+  accumulateContextObservation,
+  computeContextDisplay,
+  computeUsageAverages,
+  estimateMessageTokens,
+  formatTokenCount,
+  isOverLengthErrorText,
+  parseContextLimitFromError,
+  parseEpochResetValue,
+  extractRateLimitResetMs,
   VERDICT_ORDER,
 } from '../lib/utils.js'
 import { buildOpenClawProviderConfig } from '../lib/onboard.js'
@@ -2639,16 +2649,39 @@ describe('package and entrypoint sanity', () => {
     assert.ok(dashboardContent.includes('Use <code>tag:name</code>'))
   })
 
-  it('formats exact context sizes for display without changing routing data', () => {
+  it('formats context sizes for display without changing routing data', () => {
     assert.match(dashboardContent, /function formatContextDisplay\(value\)/)
     assert.match(dashboardContent, /Math\.round\(tokens \/ 1_000\).*K/)
-    assert.match(dashboardContent, /formatContextDisplay\(m\.ctx\)/)
+    // drawer + table show the merged known/observed context display
+    assert.match(dashboardContent, /escapeHtml\(m\.context\)/)
+    assert.ok(dashboardContent.includes("id=\"th-ctx\""))
   })
 
   it('includes working provider key reveal and copy controls', () => {
     assert.ok(dashboardContent.includes('toggleProviderKeyVisibility'))
     assert.ok(dashboardContent.includes('getConfiguredProviderKey'))
     assert.ok(dashboardContent.includes('copyProviderKey'))
+  })
+
+  it('adds a Response column with a Test button that captures full model responses', () => {
+    const serverContent = readFileSync(join(ROOT, 'lib/server.js'), 'utf8')
+    // Column header exists, after Status
+    assert.ok(dashboardContent.includes('>Response</th>'))
+    assert.ok(dashboardContent.indexOf('>Status <i') < dashboardContent.indexOf('>Response</th>'))
+    // Test flow: button handler, response cell renderer, and in-flight guard
+    assert.ok(dashboardContent.includes("function testModelButton(btn, opts)"))
+    assert.ok(dashboardContent.includes("function responseCellHTML(lastResponse, opts)"))
+    assert.ok(dashboardContent.includes('inflightTests'))
+    assert.ok(dashboardContent.includes("fetch('/api/test-model'"))
+    // Server: route exists, persists the response, records real usage stats
+    assert.ok(serverContent.includes("app.post('/api/test-model'"))
+    assert.ok(serverContent.includes('function recordTestResponse(result, info)'))
+    assert.ok(serverContent.includes('Respond with exactly the single word: Ready'))
+    assert.ok(serverContent.includes('lastResponse'))
+    // Payment-required (402) results flip the status column to a dollar + 'Paid'
+    assert.ok(dashboardContent.includes('paymentRequired === true'))
+    assert.ok(dashboardContent.includes('paid-status'))
+    assert.ok(serverContent.includes('paymentRequired'))
   })
 })
 
@@ -3099,5 +3132,164 @@ describe('OpenAI-compatible model discovery', () => {
     assert.equal(toOpenAICompatibleDiscoveredModelMeta({ id: 'nvidia/nemotron-content-safety' }, 'nvidia'), null)
     assert.equal(toOpenAICompatibleDiscoveredModelMeta({ id: 'text-embedding-3-large' }, 'nvidia'), null)
     assert.ok(toOpenAICompatibleDiscoveredModelMeta({ id: 'qwen/qwen3-coder' }, 'nvidia'))
+  })
+})
+
+describe('usage stats (ttft / tokens per second)', () => {
+  it('accumulates a fresh sample into an empty stats object', () => {
+    const stats = accumulateUsageSample(null, { ttft: 500, completionTokens: 100, genMs: 2000 })
+    assert.equal(stats.requests, 1)
+    assert.equal(stats.ttftSamples, 1)
+    assert.equal(stats.ttftSum, 500)
+    assert.equal(stats.completionTokensSum, 100)
+    assert.equal(stats.genMsSum, 2000)
+    assert.ok(Math.abs(stats.lastTps - 50) < 1e-9) // 100 tokens / 2s
+    assert.ok(stats.updatedAt != null)
+  })
+
+  it('keeps accumulating across samples and never mutates the previous object', () => {
+    let stats = accumulateUsageSample(null, { ttft: 300, completionTokens: 50, genMs: 1000 })
+    const before = JSON.stringify(stats)
+    stats = accumulateUsageSample(stats, { ttft: 700, completionTokens: 150, genMs: 3000 })
+    assert.equal(JSON.stringify(stats) !== before, true)
+    assert.equal(stats.requests, 2)
+    assert.equal(stats.ttftSamples, 2)
+    assert.equal(stats.ttftSum, 1000)
+    assert.equal(stats.completionTokensSum, 200)
+    assert.equal(stats.genMsSum, 4000)
+  })
+
+  it('skips samples without tokens when computing tps', () => {
+    const stats = accumulateUsageSample(null, { ttft: 200, completionTokens: null, genMs: 1500 })
+    assert.equal(stats.completionTokensSum, 0)
+    assert.equal(stats.lastTps, null)
+  })
+
+  it('computes token-weighted averages', () => {
+    let stats = accumulateUsageSample(null, { ttft: 400, completionTokens: 100, genMs: 2000 })
+    stats = accumulateUsageSample(stats, { ttft: 600, completionTokens: 300, genMs: 6000 })
+    const avg = computeUsageAverages(stats)
+    assert.equal(avg.requests, 2)
+    assert.equal(avg.ttft, 500) // (400 + 600) / 2
+    assert.ok(Math.abs(avg.tps - 50) < 1e-9) // 400 tokens / 8s = 50
+  })
+
+  it('returns nulls when there is no data', () => {
+    assert.deepEqual(computeUsageAverages(null), { ttft: null, tps: null, requests: 0 })
+    assert.deepEqual(computeUsageAverages({ requests: 0 }), { ttft: null, tps: null, requests: 0 })
+  })
+})
+
+describe('context window bounds (known + observed)', () => {
+  it('records a successful request as a lower bound and keeps the max', () => {
+    let stats = accumulateUsageSample(null, { ttft: 100, completionTokens: 50, genMs: 1000, contextTokens: 120_000 })
+    stats = accumulateUsageSample(stats, { ttft: 100, completionTokens: 10, genMs: 1000, contextTokens: 90_000 })
+    assert.equal(stats.contextMin, 120_000)
+    // samples without contextTokens leave the bound untouched
+    stats = accumulateUsageSample(stats, { ttft: 100, completionTokens: 10, genMs: 1000 })
+    assert.equal(stats.contextMin, 120_000)
+  })
+
+  it('lowers the upper bound across over-length observations, tracking exactness', () => {
+    let stats = accumulateContextObservation(null, { maxTokens: 500_000, exact: false })
+    assert.equal(stats.contextMax, 500_000)
+    assert.equal(stats.contextMaxExact, false)
+    stats = accumulateContextObservation(stats, { maxTokens: 200_000, exact: true })
+    assert.equal(stats.contextMax, 200_000)
+    assert.equal(stats.contextMaxExact, true)
+    // a looser bound never raises the stored max
+    stats = accumulateContextObservation(stats, { maxTokens: 900_000, exact: false })
+    assert.equal(stats.contextMax, 200_000)
+  })
+
+  it('returns the same object when nothing changes', () => {
+    const stats = { contextMin: 100 }
+    assert.equal(accumulateContextObservation(stats, {}), stats)
+  })
+
+  it('prefers known catalog context over observed bounds', () => {
+    const stats = { contextMin: 120_000, contextMax: 500_000, contextMaxExact: false }
+    assert.deepEqual(computeContextDisplay('128k', stats), { display: '128k', tokens: 128_000, source: 'known' })
+  })
+
+  it('builds bound displays from observations', () => {
+    assert.deepEqual(computeContextDisplay(null, { contextMin: 120_000, contextMax: 500_000, contextMaxExact: false }),
+      { display: '>120k, <500k', tokens: 120_000, source: 'observed' })
+    assert.deepEqual(computeContextDisplay(null, { contextMin: 120_000, contextMax: 500_000, contextMaxExact: true }),
+      { display: '>120k, ≤500k', tokens: 120_000, source: 'observed' })
+    assert.deepEqual(computeContextDisplay(null, { contextMin: 120_000 }),
+      { display: '>120k', tokens: 120_000, source: 'observed' })
+    assert.deepEqual(computeContextDisplay(null, { contextMax: 500_000, contextMaxExact: false }),
+      { display: '<500k', tokens: 500_000, source: 'observed' })
+    assert.deepEqual(computeContextDisplay(null, null), { display: null, tokens: null, source: 'none' })
+  })
+
+  it('formats token counts like catalog strings', () => {
+    assert.equal(formatTokenCount(128_000), '128k')
+    assert.equal(formatTokenCount(1_500_000), '1.5M')
+    assert.equal(formatTokenCount(32_000), '32k')
+    assert.equal(formatTokenCount(999), '999')
+    assert.equal(formatTokenCount(0), null)
+    assert.equal(formatTokenCount('128k'), null)
+  })
+
+  it('extracts stated context limits from provider error bodies', () => {
+    assert.equal(parseContextLimitFromError("This model's maximum context length is 128000 tokens. However, your messages resulted in 128005 tokens."), 128_000)
+    assert.equal(parseContextLimitFromError('prompt is too long: 216102 tokens > 200000 maximum'), 200_000)
+    assert.equal(parseContextLimitFromError('context_length_exceeded: maximum is 131072'), 131_072)
+    assert.equal(parseContextLimitFromError('some unrelated error'), null)
+    assert.equal(parseContextLimitFromError(null), null)
+  })
+
+  it('detects over-length error text heuristically', () => {
+    assert.equal(isOverLengthErrorText("This model's maximum context length is 128000 tokens"), true)
+    assert.equal(isOverLengthErrorText('prompt is too long'), true)
+    assert.equal(isOverLengthErrorText('context_length_exceeded'), true)
+    assert.equal(isOverLengthErrorText('Invalid API key'), false)
+    assert.equal(isOverLengthErrorText(''), false)
+  })
+
+  it('estimates prompt tokens from message content', () => {
+    const tokens = estimateMessageTokens([
+      { role: 'system', content: 'x'.repeat(400) },
+      { role: 'user', content: 'y'.repeat(400) },
+    ])
+    assert.equal(tokens, 216) // 800 chars / 4 + 2 messages * 32 overhead
+  })
+
+  it('computes usage averages for entries that only have context observations', () => {
+    const stats = accumulateContextObservation(null, { maxTokens: 500_000, exact: false })
+    assert.deepEqual(computeUsageAverages(stats), { ttft: null, tps: null, requests: 0 })
+  })
+
+  it('coerces epoch rate-limit reset values to epoch ms', () => {
+    assert.equal(parseEpochResetValue('1787529600000'), 1_787_529_600_000) // epoch ms
+    assert.equal(parseEpochResetValue('1787529600'), 1_787_529_600_000)   // epoch seconds
+    assert.equal(parseEpochResetValue(1_787_529_600_000), 1_787_529_600_000)
+    assert.equal(parseEpochResetValue('0'), null)
+    assert.equal(parseEpochResetValue('abc'), null)
+    assert.equal(parseEpochResetValue(null), null)
+    assert.equal(parseEpochResetValue(''), null)
+  })
+
+  it('extracts rate-limit reset time from 429 headers and error bodies', () => {
+    const body = JSON.stringify({
+      error: {
+        message: 'Rate limit exceeded',
+        code: 429,
+        metadata: { headers: { 'X-RateLimit-Limit': '50', 'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': '1787529600000' }, limit_source: 'openrouter_free_tier_daily' },
+      },
+    })
+    // From the JSON error body metadata
+    assert.equal(extractRateLimitResetMs(body, () => null), 1_787_529_600_000)
+    // Header wins when present
+    assert.equal(extractRateLimitResetMs(body, (name) => name === 'x-ratelimit-reset' ? '1787530000000' : null), 1_787_530_000_000)
+    // Retry-After (seconds) is honored
+    const before = Date.now()
+    const retry = extractRateLimitResetMs('', (name) => name === 'retry-after' ? '120' : null)
+    assert.ok(retry >= before + 120_000 && retry <= before + 120_000 + 2000)
+    // Nothing parseable -> null
+    assert.equal(extractRateLimitResetMs('some other error body', () => null), null)
+    assert.equal(extractRateLimitResetMs(null, null), null)
   })
 })
