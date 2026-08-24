@@ -3313,11 +3313,14 @@
             || elProviders.includes(selection.key)
             || (el.classList.contains('topo-link') && el.dataset.pkey === selection.key);
         } else if (selection.type === 'model') {
-          // Keep the selected model, every provider connected to it, and its
-          // connecting links visible.
+          // Keep the selected model, every provider node connected to it, and
+          // only the selected model's own links. Links also carry data-pkey,
+          // so they must not match via the provider rule — otherwise lines
+          // from the connected providers to other models would stay lit.
+          const isLink = el.classList.contains('topo-link');
           isTarget = elModelIndex === selection.index
-            || (elPk && selection.providers.includes(elPk))
-            || (el.classList.contains('topo-link') && Number(el.dataset.uidx) === selection.index);
+            || (!isLink && elPk && selection.providers.includes(elPk))
+            || (isLink && Number(el.dataset.uidx) === selection.index);
         }
         el.classList.toggle('dimmed', !isTarget);
       });
