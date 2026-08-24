@@ -47,3 +47,7 @@ Thumbs.db
 # package-lock.json
 # pnpm-lock.yaml
 # yarn.lock
+
+# 11. Local backups and tooling state
+lib/*.local-bak
+.freebuff/

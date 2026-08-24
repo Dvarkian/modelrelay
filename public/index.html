@@ -269,6 +269,7 @@
       opacity: 1;
       pointer-events: all;
       cursor: grab;
+      will-change: transform;
     }
     #bg-topology-svg.dragging {
       cursor: grabbing;
@@ -303,6 +304,20 @@
     .topo-model-label.down { fill: var(--error); opacity: 0.35; }
     .topo-model-label.best { fill: var(--accent); opacity: 0.7; }
 
+    /* While the spring layout is settling, geometry is driven by JS every frame —
+       disable the 1.5s CSS transitions so the browser doesn't try to interpolate
+       cx/cy/x/y, which is the main source of animation jank. Re-enabled on settle. */
+    #bg-topology-svg.topo-animating .topo-model,
+    #bg-topology-svg.topo-animating .topo-model-img,
+    #bg-topology-svg.topo-animating .topo-model-label,
+    #bg-topology-svg.topo-animating .topo-provider-ring,
+    #bg-topology-svg.topo-animating .topo-provider-img,
+    #bg-topology-svg.topo-animating .topo-provider-mono,
+    #bg-topology-svg.topo-animating .topo-link,
+    #bg-topology-svg.topo-animating .topo-provider-label {
+      transition: none !important;
+    }
+
     /* Highlight modes: when a provider is focused, dim everything else */
     .topo-model.dimmed, .topo-model-img.dimmed, .topo-model-label.dimmed, .topo-provider-ring.dimmed, .topo-provider-img.dimmed, .topo-provider-mono.dimmed, .topo-link.dimmed, .topo-provider-label.dimmed {
       opacity: 0.05 !important;
@@ -325,7 +340,7 @@
 
     .topo-provider-img { opacity: 1; transition: all 1.5s ease-in-out; pointer-events: all; cursor: pointer; }
 
-    .topo-provider-mono { opacity: 1; transition: all 1.5s ease-in-out; pointer-events: all; cursor: pointer; }
+    .topo-provider-mono { opacity: 1; fill: var(--surface-alt); stroke: var(--text-muted); stroke-width: 0.5; transition: all 1.5s ease-in-out; pointer-events: all; cursor: pointer; }
     .topo-provider-mono.green,
     .topo-provider-mono.amber,
     .topo-provider-mono.red,
@@ -2725,14 +2740,10 @@
         if (isRowStruck(m)) return false;
         return true;
       });
-      // Drop providers that have zero valid models
-      const providerValidModelCount = new Map();
-      for (const m of primaryModels) {
-        providerValidModelCount.set(m.providerKey, (providerValidModelCount.get(m.providerKey) || 0) + 1);
-      }
-      const activeProviders = new Set([...providerValidModelCount.entries()].filter(([, c]) => c > 0).map(([k]) => k));
-
-      const liveProviders = [...new Set(primaryModels.map(m => m.providerKey))];
+      // Only draw providers that currently have at least one online ('up') model —
+      // a provider whose models are all down/timeout has nothing to show.
+      const liveProviders = [...new Set(primaryModels.map(m => m.providerKey))]
+        .filter(pk => primaryModels.some(m => m.providerKey === pk && m.status === 'up'));
       const numProvs = liveProviders.length;
 
       // Always return a clean display name — never raw modelId with '/' or internal names
@@ -2804,7 +2815,8 @@
       // count), so the plot stays in lock-step with the primary table as models
       // come and go between the main and graveyard tables in real time.
       const membershipSig = primaryModels.map(m => getModelRowKey(m)).sort().join('|');
-      const svgHash = `${membershipSig}:${W}:${H}`;
+      const providerSig = liveProviders.slice().sort().join('|');
+      const svgHash = `${membershipSig}:${providerSig}:${W}:${H}`;
       if (svg.dataset.hash !== svgHash) {
         svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
         svg.innerHTML = '';
@@ -2843,19 +2855,26 @@
           });
         }
 
-        // One node per unique model (models first in array for index lookups)
+        // One node per unique model (models first in array for index lookups).
+        // A model is only drawn when at least one of its providers is drawn (has
+        // an online model) — otherwise it would float as an isolated dot with no
+        // connections, which reads as a rendering glitch.
+        const drawnProvKeys = new Set(provNodes.map(p => p.providerKey));
         for (let i = 0; i < numModels; i++) {
           const um = uniqueModels[i];
-          // Pick best provider (one that's up, with fastest ping)
-          const bestProv = um._providers.find(p => p.model.status === 'up') || um._providers[0];
+          const connectedKeys = um._providers.map(p => p.key).filter(k => drawnProvKeys.has(k));
+          if (connectedKeys.length === 0) continue;
+          // Pick best drawn provider (one that's up)
+          const bestProv = um._providers.find(p => p.model.status === 'up' && drawnProvKeys.has(p.key)) || um._providers.find(p => drawnProvKeys.has(p.key));
           const anchorProv = provNodes.find(p => p.providerKey === bestProv.key);
           const angle = lcg() * 2 * Math.PI;
           const dist = 5 + lcg() * 14;
           nodes.push({
             id: `m:${um.modelId}`, type: 'model',
             model: um,
-            providers: um._providers.map(p => p.key),
+            providers: connectedKeys,
             providerKey: bestProv.key,
+            umIdx: i,
             x: (anchorProv ? anchorProv.x : cx) + Math.cos(angle) * dist,
             y: (anchorProv ? anchorProv.y : cy) + Math.sin(angle) * dist,
             mass: 1.5
@@ -2881,8 +2900,6 @@
         const marginTop = provR + 6;
         const marginBottom = provR + 18;
         for (const n of nodes) { n.vx = 0; n.vy = 0; }
-        // Start positions are needed to map clip-path circles to their nodes.
-        const startX = nodes.map(n => n.x), startY = nodes.map(n => n.y);
 
         // --- Draw edges ---
         for (const e of edges) {
@@ -2900,6 +2917,7 @@
           path.setAttribute('class', 'topo-link');
           path.dataset.from = nodes.indexOf(e.from);
           path.dataset.to = nodes.indexOf(e.to);
+          path.dataset.uidx = e.from.umIdx;
           path.dataset.pkey = e.providerKey;
           g.appendChild(path);
         }
@@ -2908,12 +2926,14 @@
         for (const node of nodes) {
           if (node.type !== 'model') continue;
           const m = node.model;
+          const ni = nodes.indexOf(node);
           const px = node.x.toFixed(1), py = node.y.toFixed(1);
           // 1. Background circle (status colour)
           const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
           el.setAttribute('cx', px); el.setAttribute('cy', py); el.setAttribute('r', 5);
           el.setAttribute('class', 'topo-model');
-          el.dataset.midx = nodes.indexOf(node);
+          el.dataset.midx = ni; el.dataset.uidx = node.umIdx;
+          el.dataset.pkeys = node.providers.join('|');
           const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
           title.textContent = `${modelDisplayName(m)} · ${node.providers.map(p => PROVIDER_NAMES[p] || p).join(', ')}`;
           el.appendChild(title);
@@ -2921,12 +2941,13 @@
           // 2. Model-specific favicon (the model's own brand icon)
           const modelDom = getModelDomain(m);
           if (modelDom) {
-            const mcId = `mclip-${nodes.indexOf(node)}`;
+            const mcId = `mclip-${ni}`;
             const defs = g.querySelector('defs') || (() => { const d = document.createElementNS('http://www.w3.org/2000/svg', 'defs'); g.insertBefore(d, g.firstChild); return d; })();
             const cp = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
             cp.setAttribute('id', mcId);
             const cc = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             cc.setAttribute('cx', px); cc.setAttribute('cy', py); cc.setAttribute('r', 4.5);
+            cc.dataset.midx = ni;
             cp.appendChild(cc); defs.appendChild(cp);
             const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
             img.setAttribute('x', (node.x - 4).toFixed(1)); img.setAttribute('y', (node.y - 4).toFixed(1));
@@ -2934,7 +2955,8 @@
             img.setAttribute('href', `https://www.google.com/s2/favicons?domain=${modelDom}&sz=32`);
             img.setAttribute('clip-path', `url(#${mcId})`);
             img.setAttribute('class', 'topo-model-img');
-            img.dataset.midx = nodes.indexOf(node);
+            img.dataset.midx = ni; img.dataset.uidx = node.umIdx;
+            img.dataset.pkeys = node.providers.join('|');
             const imgTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
             imgTitle.textContent = modelDisplayName(m);
             img.appendChild(imgTitle);
@@ -2947,7 +2969,8 @@
             const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
             lbl.setAttribute('x', px); lbl.setAttribute('y', (node.y + 9).toFixed(1));
             lbl.setAttribute('class', 'topo-model-label');
-            lbl.dataset.midx = nodes.indexOf(node);
+            lbl.dataset.midx = ni; lbl.dataset.uidx = node.umIdx;
+            lbl.dataset.pkeys = node.providers.join('|');
             lbl.textContent = trunc;
             g.appendChild(lbl);
           }
@@ -2977,16 +3000,37 @@
             clipCircle.setAttribute('cx', node.x.toFixed(1));
             clipCircle.setAttribute('cy', node.y.toFixed(1));
             clipCircle.setAttribute('r', clipR);
+            // The spring animation moves this provider node; keep its clip
+            // geometry attached to the same node or the favicon gets clipped
+            // at its old position after the first animation frame.
+            clipCircle.dataset.midx = nodes.indexOf(node);
             clipPath.appendChild(clipCircle);
             defs.appendChild(clipPath);
             g.insertBefore(defs, g.firstChild);
+
+            // Keep a visible monogram underneath the remote image. It prevents
+            // a blocked favicon request from making the provider node disappear;
+            // the real logo remains on top whenever it loads successfully.
+            const mono = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            mono.setAttribute('cx', node.x.toFixed(1));
+            mono.setAttribute('cy', node.y.toFixed(1));
+            mono.setAttribute('r', clipR);
+            mono.setAttribute('class', 'topo-provider-mono');
+            mono.dataset.pkey = pk;
+            const monoTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            monoTitle.textContent = PROVIDER_NAMES[pk] || pk;
+            mono.appendChild(monoTitle);
+            g.appendChild(mono);
 
             const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
             img.setAttribute('x', (node.x - clipR).toFixed(1));
             img.setAttribute('y', (node.y - clipR).toFixed(1));
             img.setAttribute('width', faviconSz);
             img.setAttribute('height', faviconSz);
-            img.setAttribute('href', `https://www.google.com/s2/favicons?domain=${node.domain}&sz=64`);
+            img.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+            const iconHref = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(node.domain)}&sz=64`;
+            img.setAttribute('href', iconHref);
+            img.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', iconHref);
             img.setAttribute('clip-path', `url(#${clipId})`);
             img.setAttribute('class', 'topo-provider-img');
             img.dataset.pkey = pk;
@@ -2994,17 +3038,9 @@
             imgTitle.textContent = PROVIDER_NAMES[pk] || pk;
             img.appendChild(imgTitle);
             img.addEventListener('error', () => {
+              // The monogram is already beneath the image, so just hide the
+              // failed remote resource instead of inserting another node.
               img.style.display = 'none';
-              const mono = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-              mono.setAttribute('cx', node.x.toFixed(1));
-              mono.setAttribute('cy', node.y.toFixed(1));
-              mono.setAttribute('r', clipR);
-              mono.setAttribute('class', 'topo-provider-mono');
-              mono.dataset.pkey = pk;
-              const mTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-              mTitle.textContent = PROVIDER_NAMES[pk] || pk;
-              mono.appendChild(mTitle);
-              img.parentNode.insertBefore(mono, img.nextSibling);
             });
             g.appendChild(img);
           } else {
@@ -3040,7 +3076,7 @@
         g.setAttribute('transform', `translate(${tpx},${tpy}) scale(${tz})`);
 
         // ---- Kick off spring animation ----
-        startTopologyAnimation(svg, g, nodes, edges, provNodes, startX, startY, provR, W, H);
+        startTopologyAnimation(svg, g, nodes, edges, provNodes, provR, W, H);
 
       }
 
@@ -3071,12 +3107,13 @@
       }
 
       modelEls.forEach(el => {
-        const mi = Number(el.dataset.midx || 0);
+        const mi = Number(el.dataset.uidx || 0);
         if (mi >= 0 && mi < numModels) {
           const um = uniqueModels[mi];
           if (!um) { el.setAttribute('class', 'topo-model'); return; }
           const isBest = isModelBest(um);
-          el.setAttribute('class', `topo-model${modelStatusCls(um, isBest)}`);
+          const cls = `topo-model${modelStatusCls(um, isBest)}`;
+          if (el.getAttribute('class') !== cls) el.setAttribute('class', cls);
           const title = el.querySelector('title');
           if (title) title.textContent = `${modelDisplayName(um)} · ${um._providers.map(p => PROVIDER_NAMES[p.key] || p.key).join(', ')}`;
         }
@@ -3084,25 +3121,27 @@
 
       // Refresh model favicon images
       gLayer.querySelectorAll('.topo-model-img').forEach(el => {
-        const mi = Number(el.dataset.midx || 0);
+        const mi = Number(el.dataset.uidx || 0);
         if (mi >= 0 && mi < numModels) {
           const um = uniqueModels[mi];
           if (!um) return;
           const isBest = isModelBest(um);
-          el.setAttribute('class', `topo-model-img${isBest ? ' best' : ''}`);
+          const cls = `topo-model-img${isBest ? ' best' : ''}`;
+          if (el.getAttribute('class') !== cls) el.setAttribute('class', cls);
           const title = el.querySelector('title');
           if (title) title.textContent = modelDisplayName(um);
         }
       });
 
       // Refresh model labels (class + text) so they never go stale between rebuilds
-      g.querySelectorAll('.topo-model-label').forEach(el => {
-        const mi = Number(el.dataset.midx || 0);
+      gLayer.querySelectorAll('.topo-model-label').forEach(el => {
+        const mi = Number(el.dataset.uidx || 0);
         if (mi >= 0 && mi < numModels) {
           const um = uniqueModels[mi];
           if (!um) return;
           const isBest = isModelBest(um);
-          el.setAttribute('class', `topo-model-label${modelStatusCls(um, isBest)}`);
+          const cls = `topo-model-label${modelStatusCls(um, isBest)}`;
+          if (el.getAttribute('class') !== cls) el.setAttribute('class', cls);
           const shortName = modelDisplayName(um);
           const trunc = shortName.length > 12 ? shortName.slice(0, 11) + '…' : shortName;
           if (trunc && el.textContent !== trunc) el.textContent = trunc;
@@ -3110,14 +3149,15 @@
       });
 
       links.forEach(line => {
-        const mi = Number(line.dataset.from || 0);
+        const mi = Number(line.dataset.uidx || 0);
         if (mi >= 0 && mi < numModels) {
           const um = uniqueModels[mi];
           if (!um) { line.setAttribute('class', 'topo-link'); return; }
           const pk = line.dataset.pkey;
           const anyUp = providerHealth[pk] && providerHealth[pk].upCount > 0;
           const modelUp = um._providers.some(p => p.key === pk && p.model.status === 'up');
-          line.setAttribute('class', `topo-link${modelUp ? ' active' : (anyUp ? ' warn' : '')}`);
+          const cls = `topo-link${modelUp ? ' active' : (anyUp ? ' warn' : '')}`;
+          if (line.getAttribute('class') !== cls) line.setAttribute('class', cls);
         }
       });
 
@@ -3125,7 +3165,10 @@
         const pk = ring.dataset.pkey;
         const h = providerHealth[pk];
         if (!h) return;
-        ring.setAttribute('class', `topo-provider-ring${h.upCount === h.total && h.total > 0 ? ' green' : (h.upCount > 0 ? ' amber' : ' red')}`);
+        // Green means the provider has at least one live model. Providers with
+        // no live models are normally omitted from the plot, but retain a red
+        // fallback here for a stale node during a refresh transition.
+        ring.setAttribute('class', `topo-provider-ring${h.upCount > 0 ? ' green' : ' red'}`);
         const title = ring.querySelector('title');
         if (title) title.textContent = `${PROVIDER_NAMES[pk] || pk} · ${h.upCount}/${h.total} up`;
       });
@@ -3148,7 +3191,7 @@
       });
 
       // Re-apply highlight dimming
-      applyTopologyHighlight(svg, g);
+      applyTopologyHighlight(svg, gLayer);
     }
 
     // ---- Interactivity: pan, zoom, click/dblclick ----
@@ -3218,19 +3261,24 @@
       svg.addEventListener('click', (e) => {
         if (didDrag) return;
         const provEl = e.target.closest('.topo-provider-ring') || e.target.closest('.topo-provider-img') || e.target.closest('.topo-provider-mono');
+        const modelEl = e.target.closest('.topo-model') || e.target.closest('.topo-model-img') || e.target.closest('.topo-model-label');
         if (provEl) {
-          const pk = provEl.dataset.pkey;
-          if (svg._topoHighlight === pk) {
-            svg._topoHighlight = null;
-          } else {
-            svg._topoHighlight = pk;
-          }
+          const next = { type: 'provider', key: provEl.dataset.pkey };
+          const current = svg._topoHighlight;
+          svg._topoHighlight = current && current.type === next.type && current.key === next.key ? null : next;
           applyTopologyHighlight(svg, getG());
-        } else if (!e.target.closest('.topo-model')) {
-          if (svg._topoHighlight) {
-            svg._topoHighlight = null;
-            applyTopologyHighlight(svg, getG());
-          }
+        } else if (modelEl) {
+          const next = {
+            type: 'model',
+            index: Number(modelEl.dataset.uidx),
+            providers: (modelEl.dataset.pkeys || '').split('|').filter(Boolean),
+          };
+          const current = svg._topoHighlight;
+          svg._topoHighlight = current && current.type === next.type && current.index === next.index ? null : next;
+          applyTopologyHighlight(svg, getG());
+        } else if (svg._topoHighlight) {
+          svg._topoHighlight = null;
+          applyTopologyHighlight(svg, getG());
         }
       });
 
@@ -3245,11 +3293,32 @@
     }
 
     function applyTopologyHighlight(svg, g) {
-      const pk = svg._topoHighlight;
+      const selection = svg._topoHighlight;
       const allEls = g.querySelectorAll('.topo-model, .topo-model-img, .topo-model-label, .topo-provider-ring, .topo-provider-img, .topo-provider-mono, .topo-link, .topo-provider-label');
       allEls.forEach(el => {
+        if (!selection) {
+          el.classList.remove('dimmed');
+          return;
+        }
+
         const elPk = el.dataset.pkey || el.getAttribute('data-pkey') || '';
-        const isTarget = !pk || elPk === pk;
+        const elModelIndex = el.dataset.uidx == null ? null : Number(el.dataset.uidx);
+        const elProviders = (el.dataset.pkeys || '').split('|').filter(Boolean);
+        let isTarget = false;
+
+        if (selection.type === 'provider') {
+          // Keep the selected provider, every model it serves, and only the
+          // links belonging to that provider visible.
+          isTarget = elPk === selection.key
+            || elProviders.includes(selection.key)
+            || (el.classList.contains('topo-link') && el.dataset.pkey === selection.key);
+        } else if (selection.type === 'model') {
+          // Keep the selected model, every provider connected to it, and its
+          // connecting links visible.
+          isTarget = elModelIndex === selection.index
+            || (elPk && selection.providers.includes(elPk))
+            || (el.classList.contains('topo-link') && Number(el.dataset.uidx) === selection.index);
+        }
         el.classList.toggle('dimmed', !isTarget);
       });
     }
@@ -3257,7 +3326,7 @@
     // ---- Live spring layout: integrates repulsion + edge springs + gravity +
     // friction every frame until the graph settles. Nodes glide from their
     // seeded start positions and relax organically into place. ----
-    function startTopologyAnimation(svg, g, nodes, edges, provNodes, startX, startY, provR, W, H) {
+    function startTopologyAnimation(svg, g, nodes, edges, provNodes, provR, W, H) {
       if (svg._topoAnimFrame) cancelAnimationFrame(svg._topoAnimFrame);
       svg._topoAnimDone = false;
 
@@ -3322,7 +3391,7 @@
       let alpha = 1;          // cooling multiplier — guarantees convergence
       let frame = 0;
       let settleFrames = 0;
-      const MAX_FRAMES = 900; // ~15s hard stop
+      const MAX_FRAMES = 240; // ~4s hard stop; avoid monopolizing the main thread
 
       function applyForces() {
         for (const n of nodes) { n.fx = 0; n.fy = 0; }
@@ -3383,6 +3452,7 @@
       function tick() {
         if (svg._topoAnimDone || frame >= MAX_FRAMES) {
           svg._topoAnimDone = true;
+          svg.classList.remove('topo-animating');
           updateAllPositions();
           return;
         }
@@ -3394,6 +3464,7 @@
         settleFrames = maxV < 0.06 ? settleFrames + 1 : 0;
         if (settleFrames >= 10) {
           svg._topoAnimDone = true;
+          svg.classList.remove('topo-animating');
           return;
         }
         alpha = Math.max(0.02, alpha * 0.988);
@@ -3419,22 +3490,13 @@
             els.label.setAttribute('y', (n.y + provR + 8).toFixed(1));
           }
         }
-        // Update clip path circles (match by cx/cy from startX/startY)
+        // Update clip path circles via the node index stored at creation time
+        // (avoids an O(N²) positional match on every animation frame).
         clipCircles.forEach(cc => {
-          let ocx = Number(cc.dataset.origCx);
-          let ocy = Number(cc.dataset.origCy);
-          if (!ocx && ocx !== 0) {
-            ocx = Number(cc.getAttribute('cx'));
-            ocy = Number(cc.getAttribute('cy'));
-            cc.dataset.origCx = ocx;
-            cc.dataset.origCy = ocy;
-          }
-          for (let i = 0; i < N; i++) {
-            if (Math.abs(startX[i] - ocx) < 0.1 && Math.abs(startY[i] - ocy) < 0.1) {
-              cc.setAttribute('cx', nodes[i].x.toFixed(1));
-              cc.setAttribute('cy', nodes[i].y.toFixed(1));
-              break;
-            }
+          const ci = Number(cc.dataset.midx);
+          if (ci >= 0 && ci < N) {
+            cc.setAttribute('cx', nodes[ci].x.toFixed(1));
+            cc.setAttribute('cy', nodes[ci].y.toFixed(1));
           }
         });
         // Update edge paths
@@ -3454,6 +3516,9 @@
         });
       }
 
+      // Disable the 1.5s CSS transitions while JS drives geometry every frame;
+      // they'd otherwise try to interpolate cx/cy/x/y and cause massive jank.
+      svg.classList.add('topo-animating');
       svg._topoAnimFrame = requestAnimationFrame(tick);
     }
 
