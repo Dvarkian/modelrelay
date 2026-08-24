@@ -14,6 +14,7 @@ import {
   sortResults,
   findBestModel,
   rankModelsForRouting,
+  rankModelsForSmartest,
   getRoutingModelKey,
   latencyScore,
   computeQoS,
@@ -21,6 +22,7 @@ import {
   buildModelGroups,
   filterModelsByRequested,
   isRetryableProxyStatus,
+  isQuotaExhaustionError,
   computeFailedRefreshRetryAt,
   pruneDiscoverableRows,
   parseContextSize,
@@ -1227,7 +1229,7 @@ describe('user-defined model tags', () => {
     )
   })
 
-  it('filters auto-fastest by min_ctx regardless of capability tags (issue #42)', () => {
+  it('filters smartest by min_ctx regardless of capability tags (issue #42)', () => {
     const results = [
       mockResult({ modelId: 'small', tags: ['general'], ctx: '8k' }),
       mockResult({ modelId: 'medium', tags: ['coding'], ctx: '128k' }),
@@ -1235,17 +1237,17 @@ describe('user-defined model tags', () => {
     ]
 
     assert.deepEqual(
-      filterModelsByRequested(results, 'auto-fastest+min_ctx:128k').map(m => m.modelId),
+      filterModelsByRequested(results, 'smartest+min_ctx:128k').map(m => m.modelId),
       ['medium', 'large'],
     )
-    // Plain auto-fastest is untouched -- still returns everything, unfiltered.
+    // Plain smartest is untouched -- still returns everything for the ranking stage.
     assert.deepEqual(
-      filterModelsByRequested(results, 'auto-fastest').map(m => m.modelId),
+      filterModelsByRequested(results, 'smartest').map(m => m.modelId),
       ['small', 'medium', 'large'],
     )
-    // A malformed/unknown modifier falls back to plain auto-fastest behavior.
+    // A malformed/unknown modifier falls back to plain smartest behavior.
     assert.deepEqual(
-      filterModelsByRequested(results, 'auto-fastest+bogus:xyz').map(m => m.modelId),
+      filterModelsByRequested(results, 'smartest+bogus:xyz').map(m => m.modelId),
       ['small', 'medium', 'large'],
     )
   })
@@ -2174,6 +2176,21 @@ describe('rankModelsForRouting', () => {
     assert.deepEqual(ranked.map(r => r.modelId), ['d'])
   })
 
+  it('ranks smartest by Elo, then excludes rate-limited and non-working models', () => {
+    const results = [
+      mockResult({ modelId: 'highest', label: 'Highest Elo', status: 'up', elo: 1400, intell: 20 }),
+      mockResult({ modelId: 'middle', label: 'Middle Elo', status: 'up', elo: 1300, intell: 90 }),
+      mockResult({ modelId: 'down', label: 'Down Highest', status: 'down', elo: 1600, intell: 99 }),
+      mockResult({ modelId: 'limited', label: 'Limited', status: 'up', elo: 1500, rateLimit: { wasRateLimited: true } }),
+    ]
+    assert.deepEqual(rankModelsForSmartest(results).map(r => r.modelId), ['highest', 'middle'])
+    assert.deepEqual(rankModelsForSmartest(results, ['highest']).map(r => r.modelId), ['middle'])
+    assert.deepEqual(rankModelsForSmartest([
+      mockResult({ modelId: 'fallback-high', status: 'up', intell: 90 }),
+      mockResult({ modelId: 'fallback-low', status: 'up', intell: 10 }),
+    ]).map(r => r.modelId), ['fallback-high', 'fallback-low'])
+  })
+
   it('excludes proxy-rate-limited models (wasRateLimited === true)', () => {
     const results = [
       mockResult({
@@ -2469,6 +2486,14 @@ describe('QoS latency weighting (regression: nvidia/z-ai/glm-5.2 sat at a 200-29
 })
 
 describe('isRetryableProxyStatus', () => {
+  it('recognizes quota exhaustion bodies for smartest fallback', () => {
+    assert.equal(isQuotaExhaustionError('quota exceeded for this model', 400), true)
+    assert.equal(isQuotaExhaustionError('insufficient credits remaining', 402), true)
+    assert.equal(isQuotaExhaustionError('invalid API key', 403), false)
+    assert.equal(isQuotaExhaustionError('anything', 429), true)
+    assert.equal(isQuotaExhaustionError('bad request', 400), false)
+  })
+
   it('returns true for 429 and 5xx', () => {
     assert.equal(isRetryableProxyStatus(429), true)
     assert.equal(isRetryableProxyStatus('500'), true)
@@ -2877,7 +2902,7 @@ describe('onboard integrations', () => {
     assert.equal(provider.baseUrl, 'http://127.0.0.1:7352/v1')
     assert.equal(provider.api, 'openai-completions')
     assert.equal(provider.apiKey, 'no-key')
-    assert.deepEqual(provider.models, [{ id: 'auto-fastest', name: 'Auto Fastest' }])
+    assert.deepEqual(provider.models, [{ id: 'smartest', name: 'Smartest' }])
   })
 })
 
@@ -2989,8 +3014,8 @@ describe('model grouping and filtering', () => {
     assert.equal(filtered.length, 0)
   })
 
-  it('returns all models for auto-fastest', () => {
-    const filtered = filterModelsByRequested(results, 'auto-fastest', canonicalizeModelId)
+  it('returns all models for smartest', () => {
+    const filtered = filterModelsByRequested(results, 'smartest', canonicalizeModelId)
     assert.equal(filtered.length, 3)
   })
 
@@ -3136,6 +3161,13 @@ describe('package and entrypoint sanity', () => {
     assert.ok(dashboardContent.includes('copyProviderKey'))
   })
 
+  it('keeps network plot icons fully opaque', () => {
+    assert.match(dashboardContent, /#bg-topology-svg\s*\{\s*opacity:\s*1;/)
+    assert.match(dashboardContent, /\.topo-model-img\s*\{\s*opacity:\s*1;/)
+    assert.match(dashboardContent, /\.topo-provider-img\s*\{\s*opacity:\s*1;/)
+    assert.match(dashboardContent, /\.topo-provider-mono\s*\{\s*opacity:\s*1;/)
+  })
+
   it('adds a Response column with a Test button that captures full model responses', () => {
     const serverContent = readFileSync(join(ROOT, 'lib/server.js'), 'utf8')
     // Column headers — Status and Response are separate columns
@@ -3158,6 +3190,10 @@ describe('package and entrypoint sanity', () => {
     assert.ok(dashboardContent.includes('paymentRequired === true'))
     assert.ok(dashboardContent.includes('paid-status'))
     assert.ok(serverContent.includes('paymentRequired'))
+    assert.ok(serverContent.includes("id: 'smartest'"))
+    assert.ok(serverContent.includes('rankModelsForSmartest'))
+    assert.ok(serverContent.includes('isQuotaExhaustionError'))
+    assert.equal(dashboardContent.includes('auto-fastest'), false)
   })
 
   it('removes the quota column while preserving status and response columns', () => {

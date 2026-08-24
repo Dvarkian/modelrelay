@@ -266,6 +266,7 @@
     }
 
     #bg-topology-svg {
+      opacity: 1;
       pointer-events: all;
       cursor: grab;
     }
@@ -324,11 +325,11 @@
 
     .topo-provider-img { opacity: 1; transition: all 1.5s ease-in-out; pointer-events: all; cursor: pointer; }
 
-    .topo-provider-mono { opacity: 0.4; transition: all 1.5s ease-in-out; pointer-events: all; cursor: pointer; }
-    .topo-provider-mono.green { fill: var(--success); opacity: 0.6; }
-    .topo-provider-mono.amber { fill: var(--warning); opacity: 0.5; }
-    .topo-provider-mono.red { fill: var(--error); opacity: 0.4; }
-    .topo-provider-mono:hover { opacity: 0.85; }
+    .topo-provider-mono { opacity: 1; transition: all 1.5s ease-in-out; pointer-events: all; cursor: pointer; }
+    .topo-provider-mono.green,
+    .topo-provider-mono.amber,
+    .topo-provider-mono.red,
+    .topo-provider-mono:hover { opacity: 1; }
 
     .topo-link { fill: none; stroke: var(--text-muted); stroke-width: 0.8; opacity: 0.12; transition: all 1.5s ease-in-out; }
     .topo-link.active { stroke: var(--success); stroke-width: 1.4; opacity: 0.45; }
@@ -2159,7 +2160,7 @@
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <label for="chat-model-select" style="font-size:0.76rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; font-weight:700;">Model</label>
             <select id="chat-model-select" class="chat-model-select" onchange="onChatModelChange()">
-              <option value="auto-fastest">Auto (Fastest Available)</option>
+              <option value="smartest">Smartest</option>
             </select>
             <button id="chat-clear-btn" class="btn" style="background: var(--input-bg); color: var(--text); border: 1px solid var(--border);" onclick="clearChat()">Clear Chat</button>
           </div>
@@ -2220,10 +2221,10 @@
   "agents": {
     "defaults": {
       "model": {
-        "primary": "modelrelay/auto-fastest"
+        "primary": "modelrelay/smartest"
       },
       "models": {
-        "modelrelay/auto-fastest": {}
+        "modelrelay/smartest": {}
       }
     }
   }
@@ -2259,13 +2260,13 @@
         "apiKey": "dummy-key"
       },
       "models": {
-        "auto-fastest": {
-          "name": "Auto Fastest"
+        "smartest": {
+          "name": "Smartest"
         }
       }
     }
   },
-  "model": "router/auto-fastest"
+  "model": "router/smartest"
 }</pre>
           </div>
         </div>
@@ -2381,7 +2382,7 @@
     let kiroUiMessage = null;
     let chatMessages = [];
     let chatInFlight = false;
-    let chatSelectedModel = 'auto-fastest';
+    let chatSelectedModel = 'smartest';
     const CHAT_STORAGE_KEY = 'modelrelay-chat-v1';
     const CHAT_MODEL_STORAGE_KEY = 'modelrelay-chat-model-v1';
     const MODEL_ID_ALIASES = {
@@ -6314,17 +6315,17 @@
           : [];
 
         const rawModel = sessionStorage.getItem(CHAT_MODEL_STORAGE_KEY);
-        chatSelectedModel = rawModel && typeof rawModel === 'string' ? rawModel : 'auto-fastest';
+        chatSelectedModel = rawModel && typeof rawModel === 'string' ? rawModel : 'smartest';
       } catch {
         chatMessages = [];
-        chatSelectedModel = 'auto-fastest';
+        chatSelectedModel = 'smartest';
       }
     }
 
     function saveChatState() {
       try {
         sessionStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(chatMessages));
-        sessionStorage.setItem(CHAT_MODEL_STORAGE_KEY, chatSelectedModel || 'auto-fastest');
+        sessionStorage.setItem(CHAT_MODEL_STORAGE_KEY, chatSelectedModel || 'smartest');
       } catch {
         // Ignore storage failures and keep chat in-memory.
       }
@@ -6334,9 +6335,9 @@
       const select = document.getElementById('chat-model-select');
       if (!select) return;
 
-      const previousSelection = chatSelectedModel || select.value || 'auto-fastest';
+      const previousSelection = chatSelectedModel || select.value || 'smartest';
       const options = [
-        { value: 'auto-fastest', label: 'Auto (Fastest Available)' },
+        { value: 'smartest', label: 'Smartest' },
         ...models
           .filter(m => m && m.modelId)
           .sort((a, b) => (a.label || a.modelId).localeCompare(b.label || b.modelId))
@@ -6359,14 +6360,14 @@
         .join('');
 
       const hasPrevious = deduped.some(opt => opt.value === previousSelection);
-      chatSelectedModel = hasPrevious ? previousSelection : 'auto-fastest';
+      chatSelectedModel = hasPrevious ? previousSelection : 'smartest';
       select.value = chatSelectedModel;
       saveChatState();
     }
 
     function onChatModelChange() {
       const select = document.getElementById('chat-model-select');
-      chatSelectedModel = (select && select.value) ? select.value : 'auto-fastest';
+      chatSelectedModel = (select && select.value) ? select.value : 'smartest';
       saveChatState();
       setChatStatus(`Using model: ${chatSelectedModel}`, 'muted');
     }
@@ -6515,7 +6516,7 @@
 
       try {
         const requestBody = {
-          model: chatSelectedModel || 'auto-fastest',
+          model: chatSelectedModel || 'smartest',
           messages: buildChatRequestMessages()
         };
 

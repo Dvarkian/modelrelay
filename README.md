@@ -41,7 +41,7 @@ Router endpoint:
 
 - Base URL: `http://127.0.0.1:7352/v1`
 - API key: any string
-- Model: `auto-fastest` (router picks actual backend)
+- Model: `smartest` (router picks actual backend)
 
 ## 🚀 Install via Docker
 
@@ -91,13 +91,13 @@ If you want manual setup, put this in `~/.config/opencode/opencode.json`:
         "apiKey": "dummy-key"
       },
       "models": {
-        "auto-fastest": {
-          "name": "Auto Fastest"
+        "smartest": {
+          "name": "Smartest"
         }
       }
     }
   },
-  "model": "router/auto-fastest"
+  "model": "router/smartest"
 }
 ```
 
@@ -116,7 +116,7 @@ If you want manual setup, merge this into `~/.openclaw/openclaw.json`:
         "api": "openai-completions",
         "apiKey": "no-key",
         "models": [
-          { "id": "auto-fastest", "name": "Auto Fastest" }
+          { "id": "smartest", "name": "Smartest" }
         ]
       }
     }
@@ -124,10 +124,10 @@ If you want manual setup, merge this into `~/.openclaw/openclaw.json`:
   "agents": {
     "defaults": {
       "model": {
-        "primary": "modelrelay/auto-fastest"
+        "primary": "modelrelay/smartest"
       },
       "models": {
-        "modelrelay/auto-fastest": {}
+        "modelrelay/smartest": {}
       }
     }
   }
@@ -198,11 +198,11 @@ modelrelay config export | modelrelay config import
 
 `POST /v1/chat/completions` is an OpenAI-compatible chat completions endpoint.
 
-- Use `model: "auto-fastest"` to route to the best model overall
+- Use `model: "smartest"` to route to the highest-Elo working model
 - Use a grouped model ID such as `minimax-m2.5`, `kimi-k2.5`, or `glm4.7` to route within that model group
 - For grouped IDs, modelrelay selects the provider with the best current QoS for that group
 - Use `model: "tag:<name>"` (e.g. `tag:coding`) to route to the best currently available model carrying that tag — either a curated capability tag or a custom tag you've assigned in the Web UI (see [Model tags](#model-tags)). This is useful because the free models behind modelrelay come and go as availability changes — routing by tag survives a given model disappearing, where routing by a specific model/group ID does not.
-- Append `+min_ctx:<size>` to `tag:<name>` or `auto-fastest` to additionally require a minimum context window, e.g. `tag:general+min_ctx:32000` or `auto-fastest+min_ctx:128k`. `<size>` accepts a raw token count or a `k`/`m` suffix. Models whose context window can't be determined, or is smaller than the requirement, are excluded. See [Model tags](#model-tags).
+- Append `+min_ctx:<size>` to `tag:<name>` or `smartest` to additionally require a minimum context window, e.g. `tag:general+min_ctx:32000` or `smartest+min_ctx:128k`. `<size>` accepts a raw token count or a `k`/`m` suffix. Models whose context window can't be determined, or is smaller than the requirement, are excluded. See [Model tags](#model-tags).
 - In the Web UI, pinned models can now use either `Canonical Group` mode (default, pins the same model across providers) or `Exact Provider Row` mode from `Settings`
 - Streaming and non-streaming requests are both supported
 
@@ -213,7 +213,7 @@ modelrelay config export | modelrelay config import
 - Model IDs are grouped slugs such as `minimax-m2.5`, `kimi-k2.5`, and `glm4.7`
 - Each grouped ID can represent the same model across multiple providers
 - When you select one of these IDs in `/v1/chat/completions`, modelrelay routes the request to the provider with the best current QoS for that model group
-- `auto-fastest` is also exposed and routes to the best model overall
+- `smartest` is also exposed and routes to the highest-Elo working model
 - Each entry includes a `tags` array combining curated capability tags with any user-defined tags (see [Model tags](#model-tags))
 
 Example:
@@ -222,7 +222,7 @@ Example:
 {
   "object": "list",
   "data": [
-    { "id": "auto-fastest", "object": "model", "owned_by": "router" },
+    { "id": "smartest", "object": "model", "owned_by": "router" },
     { "id": "minimax-m2.5", "object": "model", "owned_by": "relay", "tags": ["agentic", "general", "coding"] },
     { "id": "kimi-k2.5", "object": "model", "owned_by": "relay", "tags": ["agentic", "coding", "general"] },
     { "id": "glm4.7", "object": "model", "owned_by": "relay", "tags": ["agentic", "coding", "general"] }
@@ -241,21 +241,21 @@ Use `model: "tag:<name>"` in `/v1/chat/completions` to route to the best current
 
 #### Minimum context window (`min_ctx`)
 
-Tag membership alone doesn't guarantee a model can fit your prompt — a tag can span models with very different context windows. Append `+min_ctx:<size>` to filter those out before QoS ranking runs:
+Tag membership alone doesn't guarantee a model can fit your prompt — a tag can span models with very different context windows. Append `+min_ctx:<size>` to filter those out before the tag route's normal QoS ranking runs:
 
 - `tag:general+min_ctx:32000` — best available `general`-tagged model with at least 32,000 tokens of context
 - `tag:coding+min_ctx:128k` — same, for `coding`, using the `k` shorthand
-- `auto-fastest+min_ctx:1m` — fastest model overall with at least 1,000,000 tokens of context, no tag restriction
+- `smartest+min_ctx:1m` — highest-Elo working model with at least 1,000,000 tokens of context, no tag restriction
 
-`<size>` accepts a plain token count (`32000`) or a `k`/`m` suffix (`32k`, `1m`). Models with no known context window, or a smaller one than requested, are excluded from consideration. An unparseable or unrecognized modifier is ignored, falling back to the unmodified `tag:<name>` or `auto-fastest` behavior rather than erroring.
+`<size>` accepts a plain token count (`32000`) or a `k`/`m` suffix (`32k`, `1m`). Models with no known context window, or a smaller one than requested, are excluded from consideration. An unparseable or unrecognized modifier is ignored, falling back to the unmodified `tag:<name>` or `smartest` behavior rather than erroring.
 
 Modelrelay uses context data reported by the selected provider when it is available. Otherwise, it uses a provider-specific curated value from `sources.js`. It does not copy a context size between providers. It also keeps the context unknown when neither source has a value. For Ollama, the allocated or configured context is usable for this filter. The model maximum alone is not sufficient.
 
-### QoS: how speed and quality are weighed
+### Routing selection
 
-`auto-fastest`, grouped-ID, and `tag:<name>` routing all rank eligible candidates by a QoS score that blends a model's quality (its `intell` percentile among all known models) with its recently observed average latency. Latency is scored continuously and never fully bottoms out at zero — a model averaging 1.1s and one averaging 4 minutes are not treated as equivalent just because both are technically "up" and returning HTTP 200. The latency discount is `target / (target + avg)`: an instant response scores 1.0, a model averaging exactly the configured target scores 0.5, and the score keeps decaying continuously past that — but it always remains a nonzero (last-resort) candidate rather than being excluded outright. Exclusion is still a separate, explicit action (ban a model, or set a minimum coding score / excluded providers list).
+The `smartest` selector considers only provider/model rows currently marked `up`, orders them by verified Elo, and falls back to the local intelligence score when no Elo is available. Quota and rate-limit failures advance to the next highest-Elo working model.
 
-The target is `qosLatencyTargetMs`, configurable in the Web UI under **Settings → QoS Latency Target (ms)** (default: 3000ms). Lower it to weight speed more heavily against quality; raise it to let quality dominate over a wider range of observed latencies. It applies uniformly to `auto-fastest`, `tag:<name>`, grouped-ID, and pinned-model routing.
+Grouped-ID and `tag:<name>` routing retain their normal QoS behavior. For those routes, the QoS score blends model quality, uptime, and recently observed latency. The latency target is configurable in the Web UI under **Settings → QoS Latency Target (ms)** (default: 3000ms).
 
 ## Config
 

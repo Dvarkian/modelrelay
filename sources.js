@@ -364,7 +364,7 @@ export const sources = {
       // actually uses (likely on a more restrictive "Free Trial" tier, not full "Free") gets
       // hard-rejected by the real API at 8192 tokens: "Please reduce the length of the messages
       // or completion. Current length is 23592 while limit is 8192" (confirmed live 2026-08-07,
-      // this is what a real openclaw-sandbox request hit via auto-fastest+min_ctx:32000 -- the
+      // this is what a real openclaw-sandbox request hit via smartest+min_ctx:32000 -- the
       // min_ctx filter can only work if this catalog value reflects what actually gets accepted,
       // not the model's advertised maximum). If the account tier ever changes, re-verify before
       // raising this.
