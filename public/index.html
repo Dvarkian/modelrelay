@@ -4337,6 +4337,14 @@
               <span style="color: var(--text-muted);" title="Model does not support text chat (image/video only)">Incompatible</span>
             </div>`;
       }
+      // Context experimentally bounded at ≤16k by provider errors: 'Micro' so it
+      // reads as unusable rather than a plain 'Down'.
+      if (m.microContext === true) {
+        return `
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="color: var(--text-muted);" title="Max context length bounded at ≤16k by provider errors">Micro</span>
+            </div>`;
+      }
       // Model is gone (410 Gone / end-of-life): persistent 'Dead' status, not 'Down'
       if ((m.lastResponse && m.lastResponse.dead === true) || m.status === 'dead') {
         return `
@@ -4373,6 +4381,10 @@
       // Incompatible: model can't accept text chat (image/video only)
       if ((m.lastResponse && m.lastResponse.incompatible === true && currentStatus !== 'up') || currentStatus === 'incompatible') {
         return `<span style="color: var(--text-muted);" title="Model does not support text chat (image/video only)">Incompatible</span>`;
+      }
+      // Micro: context experimentally bounded at ≤16k by provider errors
+      if (m.microContext === true && currentStatus !== 'up') {
+        return `<span style="color: var(--text-muted);" title="Max context length bounded at ≤16k by provider errors">Micro</span>`;
       }
       // Dead: show red dot + 'DEAD'
       if ((m.lastResponse && m.lastResponse.dead === true && currentStatus !== 'up') || currentStatus === 'dead') {
@@ -4447,17 +4459,20 @@
     }
     setInterval(updateRateLimitCountdowns, 1000);
 
-    // Rows whose model is paid-walled, dead, or incompatible get every cell struck through.
+    // Rows whose model is paid-walled, dead, incompatible, or micro-context-bounded
+    // get every cell struck through.
     function isRowStruck(m) {
       return (m.lastResponse && m.lastResponse.paymentRequired === true)
         || (m.lastResponse && m.lastResponse.dead === true)
         || m.status === 'dead'
         || (m.lastResponse && m.lastResponse.incompatible === true)
-        || m.status === 'incompatible';
+        || m.status === 'incompatible'
+        || m.microContext === true;
     }
 
-    // A group whose *every* provider row is paid-walled, dead, or incompatible
-    // belongs in the graveyard table (auto-collapsed) because it offers nothing usable.
+    // A group whose *every* provider row is paid-walled, dead, incompatible, or
+    // micro-context-bounded belongs in the graveyard table (auto-collapsed)
+    // because it offers nothing usable.
     function isGraveyardGroup(g) {
       return g.members.length > 0 && g.members.every(m => isRowStruck(m));
     }
@@ -4534,13 +4549,16 @@
       const paidCount = members.filter(m => m.lastResponse && m.lastResponse.paymentRequired === true).length;
       const deadCount = members.filter(m => (m.lastResponse && m.lastResponse.dead === true) || m.status === 'dead').length;
       const incompatCount = members.filter(m => (m.lastResponse && m.lastResponse.incompatible === true) || m.status === 'incompatible').length;
+      const microCount = members.filter(m => m.microContext === true).length;
       const statusParts = [];
       if (paidCount > 0) statusParts.push(`${paidCount} paid`);
       if (deadCount > 0) statusParts.push(`${deadCount} dead`);
       if (incompatCount > 0) statusParts.push(`${incompatCount} incompatible`);
+      if (microCount > 0) statusParts.push(`${microCount} Micro`);
       const statusText = statusParts.join(' / ') || 'Unavailable';
-      const lastResponse = groupLastResponse(g);
       const hasAuth = members.some(m => m.status !== 'noauth');
+
+      const lastResponse = groupLastResponse(g);
 
       return `
           <td style="cursor:pointer;" onclick='openDrawer(${JSON.stringify(first).replace(/'/g, "&apos;")})'>

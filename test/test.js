@@ -39,6 +39,7 @@ import {
   checkApiRequestAllowed,
   accumulateUsageSample,
   accumulateContextObservation,
+  isMicroContextBound,
   computeContextDisplay,
   computeUsageAverages,
   estimateMessageTokens,
@@ -3768,6 +3769,18 @@ describe('context window bounds (known + observed)', () => {
     assert.deepEqual(computeContextDisplay(null, { contextMax: 500_000, contextMaxExact: false }),
       { display: '<500k', tokens: 500_000, source: 'observed' })
     assert.deepEqual(computeContextDisplay(null, null), { display: null, tokens: null, source: 'none' })
+  })
+
+  it('flags experimentally bounded micro context windows', () => {
+    // provider-stated exact maximum observed in an error
+    assert.equal(isMicroContextBound({ contextMax: 4096, contextMaxExact: true }), true)
+    // loose bound inferred from an over-length rejection; inclusive at 16k
+    assert.equal(isMicroContextBound({ contextMax: 16_384, contextMaxExact: false }), true)
+    assert.equal(isMicroContextBound({ contextMax: 16_385, contextMaxExact: false }), false)
+    // only upper bounds count; a lower bound says nothing about smallness
+    assert.equal(isMicroContextBound({ contextMin: 2000 }), false)
+    assert.equal(isMicroContextBound(null), false)
+    assert.equal(isMicroContextBound(undefined), false)
   })
 
   it('formats token counts like catalog strings', () => {
