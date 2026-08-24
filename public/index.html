@@ -2716,12 +2716,13 @@
       const svg = document.getElementById('bg-topology-svg');
       if (!svg) return;
 
-      // ---- Filter to primary-table models only ----
+      // ---- Filter to exactly the primary-table model set ----
+      // Mirror the main table: drop noauth rows (no API key), and drop any row
+      // that would be struck through (paid / dead / incompatible / micro-context)
+      // — those live in the graveyard table, not the primary table.
       const primaryModels = models.filter(m => {
-        if (m.lastResponse && m.lastResponse.paymentRequired === true) return false;
-        if ((m.lastResponse && m.lastResponse.dead === true) || m.status === 'dead') return false;
-        if ((m.lastResponse && m.lastResponse.incompatible === true) || m.status === 'incompatible') return false;
         if (m.status === 'noauth') return false;
+        if (isRowStruck(m)) return false;
         return true;
       });
       // Drop providers that have zero valid models
@@ -2741,20 +2742,16 @@
         return (m.modelId || '').replace(/^[a-z0-9_-]+\//i, '').replace(/[-_](free|latest|snapshot|preview)$/i, '').trim() || m.modelId || 'Unknown';
       }
 
-      // ---- Deduplicate models using the same canonical key as the main table ----
-      // This ensures the network plot shows exactly the same set of model groups.
-      const modelByGroup = new Map();
-      for (const m of primaryModels) {
-        const c = canonicalizeClientModelId(m.modelId);
-        const groupKey = (c.unprefixed || m.modelId || '').toLowerCase();
-        if (!modelByGroup.has(groupKey)) {
-          modelByGroup.set(groupKey, { ...m, _groupKey: groupKey, _providers: [{ key: m.providerKey, model: m }] });
-        } else {
-          modelByGroup.get(groupKey)._providers.push({ key: m.providerKey, model: m });
-        }
-      }
-      const uniqueModels = [...modelByGroup.values()];
-      const numModels = Math.min(uniqueModels.length, 120);
+      // ---- Build one node per model group using the exact same grouping as the
+      // main table (canonical modelId key, then label-name merge), so the network
+      // plot shows precisely the same model set as the primary table. ----
+      const uniqueModels = groupModels(primaryModels).map(g => ({
+        ...g.members[0],
+        label: g.label,
+        _groupKey: g.key,
+        _providers: g.members.map(m => ({ key: m.providerKey, model: m })),
+      }));
+      const numModels = uniqueModels.length;
 
       // Model-family → favicon domain (model's own brand, not the provider hosting it)
       const MODEL_DOMAINS = {
@@ -2803,7 +2800,11 @@
       const faviconSz = Math.round(provR * 1.6);
       const clipR = Math.round(faviconSz / 2);
 
-      const svgHash = `${numModels}:${numProvs}:${W}:${H}`;
+      // Rebuild whenever the actual model membership changes (not just the
+      // count), so the plot stays in lock-step with the primary table as models
+      // come and go between the main and graveyard tables in real time.
+      const membershipSig = primaryModels.map(m => getModelRowKey(m)).sort().join('|');
+      const svgHash = `${membershipSig}:${W}:${H}`;
       if (svg.dataset.hash !== svgHash) {
         svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
         svg.innerHTML = '';
@@ -2872,53 +2873,16 @@
           }
         }
 
-        // --- Compute target positions via force simulation, then animate from start → target ---
-        const SIM_ITERATIONS = 30, repulsionStrength = 500, springK = 0.04, springLen = 17;
-        const margin = provR + 8;
-        // Save initial positions
+        // --- Real-time spring simulation: nodes glide from their seeded start
+        // positions and settle under pairwise repulsion, edge springs, a gentle
+        // centre pull, and friction. Integrated live each frame in
+        // startTopologyAnimation, so the layout visibly "relaxes" into place. ---
+        const marginX = provR + 8;
+        const marginTop = provR + 6;
+        const marginBottom = provR + 18;
+        for (const n of nodes) { n.vx = 0; n.vy = 0; }
+        // Start positions are needed to map clip-path circles to their nodes.
         const startX = nodes.map(n => n.x), startY = nodes.map(n => n.y);
-        // Run simulation to find target positions
-        for (let iter = 0; iter < SIM_ITERATIONS; iter++) {
-          const forces = nodes.map(() => ({ fx: 0, fy: 0 }));
-          for (let a = 0; a < nodes.length; a++) {
-            for (let b = a + 1; b < nodes.length; b++) {
-              let dx = nodes[a].x - nodes[b].x, dy = nodes[a].y - nodes[b].y;
-              let dist = Math.sqrt(dx * dx + dy * dy);
-              if (dist < 0.5) { dist = 0.5; dx = lcg() - 0.5; dy = lcg() - 0.5; }
-              const force = repulsionStrength / (dist * dist);
-              forces[a].fx += (dx / dist) * force / nodes[a].mass;
-              forces[a].fy += (dy / dist) * force / nodes[a].mass;
-              forces[b].fx -= (dx / dist) * force / nodes[b].mass;
-              forces[b].fy -= (dy / dist) * force / nodes[b].mass;
-            }
-          }
-          for (const e of edges) {
-            let dx = e.to.x - e.from.x, dy = e.to.y - e.from.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist < 0.5) continue;
-            const force = springK * (dist - springLen);
-            const fx = (dx / dist) * force, fy = (dy / dist) * force;
-            forces[nodes.indexOf(e.from)].fx += fx / e.from.mass;
-            forces[nodes.indexOf(e.from)].fy += fy / e.from.mass;
-            forces[nodes.indexOf(e.to)].fx -= fx / e.to.mass;
-            forces[nodes.indexOf(e.to)].fy -= fy / e.to.mass;
-          }
-          for (let i = 0; i < nodes.length; i++) {
-            forces[i].fx += (cx - nodes[i].x) * 0.005 / nodes[i].mass;
-            forces[i].fy += (cy - nodes[i].y) * 0.005 / nodes[i].mass;
-          }
-          for (let i = 0; i < nodes.length; i++) {
-            const damp = 0.55;
-            nodes[i].x += forces[i].fx * damp;
-            nodes[i].y += forces[i].fy * damp;
-            nodes[i].x = Math.max(margin, Math.min(W - margin, nodes[i].x));
-            nodes[i].y = Math.max(margin, Math.min(H - margin, nodes[i].y));
-          }
-        }
-        // Capture settled target positions
-        const targetX = nodes.map(n => n.x), targetY = nodes.map(n => n.y);
-        // Reset to initial positions for the animation start
-        nodes.forEach((n, i) => { n.x = startX[i]; n.y = startY[i]; });
 
         // --- Draw edges ---
         for (const e of edges) {
@@ -3076,17 +3040,18 @@
         g.setAttribute('transform', `translate(${tpx},${tpy}) scale(${tz})`);
 
         // ---- Kick off spring animation ----
-        startTopologyAnimation(svg, g, nodes, edges, provNodes, startX, startY, targetX, targetY, provR);
+        startTopologyAnimation(svg, g, nodes, edges, provNodes, startX, startY, provR, W, H);
+
       }
 
       // ---- Refresh colours, labels, and tooltips each render ----
-      const g = svg.querySelector('#topo-layer');
-      if (!g) return;
-      const modelEls = g.querySelectorAll('.topo-model');
-      const links = g.querySelectorAll('.topo-link');
-      const rings = g.querySelectorAll('.topo-provider-ring');
-      const imgs = g.querySelectorAll('.topo-provider-img');
-      const monos = g.querySelectorAll('.topo-provider-mono');
+      const gLayer = svg.querySelector('#topo-layer');
+      if (!gLayer) return;
+      const modelEls = gLayer.querySelectorAll('.topo-model');
+      const links = gLayer.querySelectorAll('.topo-link');
+      const rings = gLayer.querySelectorAll('.topo-provider-ring');
+      const imgs = gLayer.querySelectorAll('.topo-provider-img');
+      const monos = gLayer.querySelectorAll('.topo-provider-mono');
 
       const providerHealth = {};
       for (const pk of liveProviders) {
@@ -3118,7 +3083,7 @@
       });
 
       // Refresh model favicon images
-      g.querySelectorAll('.topo-model-img').forEach(el => {
+      gLayer.querySelectorAll('.topo-model-img').forEach(el => {
         const mi = Number(el.dataset.midx || 0);
         if (mi >= 0 && mi < numModels) {
           const um = uniqueModels[mi];
@@ -3130,7 +3095,7 @@
         }
       });
 
-      // Refresh model labels
+      // Refresh model labels (class + text) so they never go stale between rebuilds
       g.querySelectorAll('.topo-model-label').forEach(el => {
         const mi = Number(el.dataset.midx || 0);
         if (mi >= 0 && mi < numModels) {
@@ -3138,6 +3103,9 @@
           if (!um) return;
           const isBest = isModelBest(um);
           el.setAttribute('class', `topo-model-label${modelStatusCls(um, isBest)}`);
+          const shortName = modelDisplayName(um);
+          const trunc = shortName.length > 12 ? shortName.slice(0, 11) + '…' : shortName;
+          if (trunc && el.textContent !== trunc) el.textContent = trunc;
         }
       });
 
@@ -3286,14 +3254,13 @@
       });
     }
 
-    // ---- Animated spring layout: interpolates nodes from initial → settled positions ----
-    function startTopologyAnimation(svg, g, nodes, edges, provNodes, startX, startY, targetX, targetY, provR) {
+    // ---- Live spring layout: integrates repulsion + edge springs + gravity +
+    // friction every frame until the graph settles. Nodes glide from their
+    // seeded start positions and relax organically into place. ----
+    function startTopologyAnimation(svg, g, nodes, edges, provNodes, startX, startY, provR, W, H) {
       if (svg._topoAnimFrame) cancelAnimationFrame(svg._topoAnimFrame);
-      if (svg._topoAnimDone) { svg._topoAnimDone = true; } // cancel any prior
       svg._topoAnimDone = false;
 
-      const totalFrames = 70;
-      let frame = 0;
       const N = nodes.length;
 
       // Build element lookup: nodeIndex → { circle, img, label, clipCircle }
@@ -3326,37 +3293,110 @@
         };
       });
 
-      // Clip path circles (for model favicons)
+      // Clip path circles (model favicons)
       const clipCircles = g.querySelectorAll('clipPath circle');
-      // We can't easily map them to nodes, so we'll update them via the defs on each frame.
-      // Instead, rebuild clip paths each frame by updating their cx/cy to match the node.
 
       // Edge path elements (matched by from/to indices)
       const edgeEls = [];
       g.querySelectorAll('.topo-link').forEach(el => {
-        const fi = Number(el.dataset.from);
-        const ti = Number(el.dataset.to);
-        edgeEls.push({ el, fi, ti });
+        edgeEls.push({ el, fi: Number(el.dataset.from), ti: Number(el.dataset.to) });
       });
 
+      // ---- Spring-physics constants ----
+      // Anisotropic metric: vertical distances are weighted by the card's
+      // aspect ratio, so a wide/short card spreads the graph horizontally
+      // instead of piling nodes into vertical stripes.
+      const aspect = Math.max(1, W / Math.max(1, H));
+      const ideal = Math.sqrt((W * H) / Math.max(6, N));   // Fruchterman–Reingold spacing
+      const restLen = ideal * 0.85;                        // spring natural length (weighted px)
+      const springK = 0.05;                                // spring stiffness
+      const repulsion = ideal * ideal;                     // k²/d² pairwise push
+      const repulsionCap = 50;
+      const gravity = 0.03;                                // weak pull to centre
+      const friction = 0.85;                               // velocity damping per frame
+      const maxSpeed = 12;                                 // px/frame speed clamp
+      const marginX = provR + 8;
+      const marginTop = provR + 6;
+      const marginBottom = provR + 18;
+
+      let alpha = 1;          // cooling multiplier — guarantees convergence
+      let frame = 0;
+      let settleFrames = 0;
+      const MAX_FRAMES = 900; // ~15s hard stop
+
+      function applyForces() {
+        for (const n of nodes) { n.fx = 0; n.fy = 0; }
+        // Pairwise repulsion (gradient under the weighted-distance metric)
+        for (let a = 0; a < N; a++) {
+          const na = nodes[a];
+          for (let b = a + 1; b < N; b++) {
+            const nb = nodes[b];
+            let dx = nb.x - na.x, dy = (nb.y - na.y) * aspect;
+            let d2 = dx * dx + dy * dy;
+            if (d2 < 0.25) {
+              // Deterministic jitter for coincident points
+              dx = ((a * 31 + b * 17) % 11) - 5 || 0.7;
+              dy = (((a * 13 + b * 7) % 7) - 3) || 0.4;
+              d2 = dx * dx + dy * dy;
+            }
+            const d = Math.sqrt(d2);
+            const f = Math.min(repulsion / d2, repulsionCap) * alpha;
+            const ux = dx / d, uy = dy / d;
+            na.fx -= ux * f / na.mass; na.fy -= uy * f * aspect / na.mass;
+            nb.fx += ux * f / nb.mass; nb.fy += uy * f * aspect / nb.mass;
+          }
+        }
+        // Edge springs
+        for (const e of edges) {
+          const dx = e.to.x - e.from.x, dy = (e.to.y - e.from.y) * aspect;
+          const d = Math.sqrt(dx * dx + dy * dy) || 0.001;
+          const f = springK * (d - restLen) * alpha;
+          const fx = (dx / d) * f, fy = (dy / d) * f * aspect;
+          e.from.fx += fx / e.from.mass; e.from.fy += fy / e.from.mass;
+          e.to.fx -= fx / e.to.mass; e.to.fy -= fy / e.to.mass;
+        }
+        // Gentle gravity toward the card centre
+        for (const n of nodes) {
+          n.fx += (W / 2 - n.x) * gravity * alpha / n.mass;
+          n.fy += (H / 2 - n.y) * gravity * alpha / n.mass;
+        }
+      }
+
+      function integrate() {
+        let maxV = 0;
+        for (const n of nodes) {
+          n.vx = (n.vx + n.fx) * friction;
+          n.vy = (n.vy + n.fy) * friction;
+          const sp = Math.hypot(n.vx, n.vy);
+          if (sp > maxSpeed) { n.vx *= maxSpeed / sp; n.vy *= maxSpeed / sp; }
+          n.x += n.vx; n.y += n.vy;
+          // Soft walls
+          if (n.x < marginX) { n.x = marginX; n.vx = 0; }
+          else if (n.x > W - marginX) { n.x = W - marginX; n.vx = 0; }
+          if (n.y < marginTop) { n.y = marginTop; n.vy = 0; }
+          else if (n.y > H - marginBottom) { n.y = H - marginBottom; n.vy = 0; }
+          if (sp > maxV) maxV = sp;
+        }
+        return maxV;
+      }
+
       function tick() {
-        if (svg._topoAnimDone || frame >= totalFrames) {
-          // Snap to final positions
-          nodes.forEach((n, i) => { n.x = targetX[i]; n.y = targetY[i]; });
+        if (svg._topoAnimDone || frame >= MAX_FRAMES) {
+          svg._topoAnimDone = true;
           updateAllPositions();
           return;
         }
         frame++;
-        const t = frame / totalFrames;
-        // Ease-out cubic: fast start, gentle settle
-        const ease = 1 - Math.pow(1 - t, 3);
-
-        nodes.forEach((n, i) => {
-          n.x = startX[i] + (targetX[i] - startX[i]) * ease;
-          n.y = startY[i] + (targetY[i] - startY[i]) * ease;
-        });
-
+        applyForces();
+        const maxV = integrate();
         updateAllPositions();
+        // Settled once everything is barely moving for a few consecutive frames
+        settleFrames = maxV < 0.06 ? settleFrames + 1 : 0;
+        if (settleFrames >= 10) {
+          svg._topoAnimDone = true;
+          return;
+        }
+        alpha = Math.max(0.02, alpha * 0.988);
         svg._topoAnimFrame = requestAnimationFrame(tick);
       }
 
@@ -3889,8 +3929,9 @@
       // While hovering we also lock the order (values still refresh in place).
       if (!hoverLocked && (isUserAction || liveSortOn || currentRenderedOrder.length === 0)) {
         const allGroups = sortedGroups(groupModels(filtered));
-        expanded = buildExpanded(allGroups.filter(g => !isGraveyardGroup(g)));
-        graveyardGroups = allGroups.filter(g => isGraveyardGroup(g));
+        const { mainGroups, graveyardGroups: grave } = splitDisplayGroups(allGroups);
+        expanded = buildExpanded(mainGroups);
+        graveyardGroups = grave;
       } else {
         // Live sort is OFF: lock groups/rows to their previously rendered positions,
         // but allow new data updates. New models/groups fall to the bottom.
@@ -3914,8 +3955,9 @@
           if (idxB !== Infinity) return 1;
           return compareByChain(a.members[0], b.members[0], DEFAULT_SORT_CHAIN);
         });
-        expanded = buildExpanded(allGroups.filter(g => !isGraveyardGroup(g)));
-        graveyardGroups = allGroups.filter(g => isGraveyardGroup(g));
+        const { mainGroups, graveyardGroups: grave } = splitDisplayGroups(allGroups);
+        expanded = buildExpanded(mainGroups);
+        graveyardGroups = grave;
       }
 
       const newOrderKeys = expanded.map(e => e.type === 'group' ? 'g:' + e.key : getModelRowKey(e.m));
@@ -4470,11 +4512,20 @@
         || m.microContext === true;
     }
 
-    // A group whose *every* provider row is paid-walled, dead, incompatible, or
-    // micro-context-bounded belongs in the graveyard table (auto-collapsed)
-    // because it offers nothing usable.
-    function isGraveyardGroup(g) {
-      return g.members.length > 0 && g.members.every(m => isRowStruck(m));
+    // Split display groups into the main table (usable rows only) and the
+    // graveyard (paid / dead / incompatible / micro rows). A struck row — paid
+    // above all — never appears in the main table, even inside a group that also
+    // has usable providers; it is moved to the graveyard instead.
+    function splitDisplayGroups(allGroups) {
+      const mainGroups = [];
+      const graveyardGroups = [];
+      for (const g of allGroups) {
+        const usable = g.members.filter(m => !isRowStruck(m));
+        const struck = g.members.filter(m => isRowStruck(m));
+        if (usable.length > 0) mainGroups.push({ ...g, members: usable });
+        if (struck.length > 0) graveyardGroups.push({ ...g, members: struck });
+      }
+      return { mainGroups, graveyardGroups };
     }
 
     // Renders the graveyard table: all groups whose every provider row is paid or

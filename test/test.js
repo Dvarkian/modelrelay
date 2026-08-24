@@ -55,6 +55,7 @@ import {
   isPaymentRequiredError,
   isDeadModelError,
   isIncompatibleModelError,
+  isRateLimitedErrorText,
   shouldKeepUpAfterFailedProbe,
   VERDICT_ORDER,
 } from '../lib/utils.js'
@@ -3854,9 +3855,23 @@ describe('context window bounds (known + observed)', () => {
   it('detects incompatible model errors (text-input rejected)', () => {
     assert.equal(isIncompatibleModelError('Content cannot be a plain string. The model does not support text input.', 400), true)
     assert.equal(isIncompatibleModelError('{"object":"error","message":"Content cannot be a plain string. The model does not support text input. Content cannot be a plain string. The model does not support text input.","type":"BadRequestError"}', 400), true)
+    // Google AI: newer Gemini models served only via the Interactions API
+    assert.equal(isIncompatibleModelError(JSON.stringify({ error: { code: 400, message: 'This model only supports Interactions API.', status: 'INVALID_ARGUMENT' } }), 400), true)
+    assert.equal(isIncompatibleModelError('This model only supports the Interactions API.', 400), true)
     assert.equal(isIncompatibleModelError('Rate limit exceeded', 429), false)
     assert.equal(isIncompatibleModelError('Payment required', 402), false)
     assert.equal(isIncompatibleModelError(null, 400), false)
+  })
+
+  it('detects rate-limit errors delivered outside an HTTP 429', () => {
+    // Anthropic-style gateway body wrapped in a non-429 status
+    assert.equal(isRateLimitedErrorText(JSON.stringify({ type: 'error', error: { type: 'FreeUsageLimitError', message: 'Error from provider (Console): Rate limit exceeded. Please try again later.' } })), true)
+    assert.equal(isRateLimitedErrorText('Rate limit exceeded. Please try again later.'), true)
+    assert.equal(isRateLimitedErrorText('Rate limit has been reached'), true)
+    assert.equal(isRateLimitedErrorText('Too many requests, slow down'), true)
+    assert.equal(isRateLimitedErrorText('This model only supports Interactions API.'), false)
+    assert.equal(isRateLimitedErrorText('Content cannot be a plain string.'), false)
+    assert.equal(isRateLimitedErrorText(null), false)
   })
 
   describe('shouldKeepUpAfterFailedProbe', () => {
