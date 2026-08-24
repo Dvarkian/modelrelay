@@ -1043,14 +1043,14 @@
       vertical-align: middle;
     }
 
-    .table-wrap th:nth-child(1),  .table-wrap td:nth-child(1)  { width: 25%; }
-    .table-wrap th:nth-child(2),  .table-wrap td:nth-child(2)  { width: 5%; }
-    .table-wrap th:nth-child(3),  .table-wrap td:nth-child(3)  { width: 7%; }
+    .table-wrap th:nth-child(1),  .table-wrap td:nth-child(1)  { width: 26%; }
+    .table-wrap th:nth-child(2),  .table-wrap td:nth-child(2)  { width: 6%; }
+    .table-wrap th:nth-child(3),  .table-wrap td:nth-child(3)  { width: 8%; }
     .table-wrap th:nth-child(4),  .table-wrap td:nth-child(4)  { width: 7%; }
-    .table-wrap th:nth-child(5),  .table-wrap td:nth-child(5)  { width: 5%; }
-    .table-wrap th:nth-child(6),  .table-wrap td:nth-child(6)  { width: 5%; }
+    .table-wrap th:nth-child(5),  .table-wrap td:nth-child(5)  { width: 7%; }
+    .table-wrap th:nth-child(6),  .table-wrap td:nth-child(6)  { width: 10%; }
     .table-wrap th:nth-child(7),  .table-wrap td:nth-child(7)  { width: 14%; }
-    .table-wrap th:nth-child(8),  .table-wrap td:nth-child(8)  { width: 32%; }
+    .table-wrap th:nth-child(8),  .table-wrap td:nth-child(8)  { width: 22%; }
 
     /* Model/name column: never truncate names — write them out in full, wrapping */
     .table-wrap td:first-child {
@@ -1062,9 +1062,10 @@
       flex: 0 1 auto;
     }
 
-    /* Quota and response values are intentionally allowed to wrap. Without this,
-       long provider errors and multi-dimensional limits are clipped by the fixed
-       table layout or force awkward row overflow. */
+    /* Status and response values may contain provider errors, so keep them
+       readable inside the fixed table layout. */
+    .table-wrap th:nth-child(6),
+    .table-wrap td:nth-child(6),
     .table-wrap th:nth-child(7),
     .table-wrap td:nth-child(7),
     .table-wrap th:nth-child(8),
@@ -1075,36 +1076,11 @@
       line-height: 1.35;
     }
 
+    .table-wrap td:nth-child(6) > div,
     .table-wrap td:nth-child(7) > div,
     .table-wrap td:nth-child(8) > div {
       min-width: 0;
       max-width: 100%;
-    }
-
-    .quota-report-list {
-      display: grid;
-      gap: 4px;
-      min-width: 0;
-    }
-
-    .quota-report-list > div {
-      min-width: 0;
-      font-size: 0.7rem;
-      line-height: 1.3;
-    }
-
-    .quota-meter {
-      height: 3px;
-      margin-top: 2px;
-      border-radius: 3px;
-      background: var(--border);
-      overflow: hidden;
-    }
-
-    .quota-meter > div {
-      height: 100%;
-      border-radius: inherit;
-      transition: width 1.5s;
     }
 
     @media (max-width: 640px) {
@@ -2046,8 +2022,9 @@
               <th class="sortable" onclick="setSort('ctx')" id="th-ctx"
                 title="Context window: known limit, or bounds inferred from real requests (e.g. >120k, <500k)">Context <i class="sort-arrow"
                   id="arrow-ctx">↕</i></th>
-              <th title="Free-tier quota usage (limit / remaining / reset)">Quota</th>
-              <th title="Status, rate-limit countdowns, or last test response">Status / Response</th>
+              <th class="sortable" onclick="setSort('status')" id="th-status" title="Model health from pings and tests">Status <i class="sort-arrow"
+                  id="arrow-status">↕</i></th>
+              <th title="Click Test to ask the model to respond with the word Ready; the full response (or error) is shown here">Response</th>
             </tr>
           </thead>
           <tbody id="table-body">
@@ -2056,14 +2033,20 @@
         </table>
         </div>
 
-        <details class="graveyard-details" id="graveyard-details" open>
+        <details class="graveyard-details" id="graveyard-details">
           <summary id="graveyard-summary">Unavailable models (0)</summary>
           <div class="table-wrap">
             <table id="graveyard-table">
               <thead>
                 <tr>
-                  <th style="width:50%;">Model</th>
-                  <th style="width:50%;">Status / Response</th>
+                  <th>Model</th>
+                  <th>Intelligence</th>
+                  <th class="text-right">Ping</th>
+                  <th class="text-right">TTFT</th>
+                  <th class="text-right">Tok/s</th>
+                  <th>Context</th>
+                  <th>Status</th>
+                  <th>Response</th>
                 </tr>
               </thead>
               <tbody id="graveyard-body">
@@ -2435,32 +2418,16 @@
         if (!metaLoaded) {
           loadMeta();
         }
-        const [modelsRes, configRes, usageRes] = await Promise.all([
+        const [modelsRes, configRes] = await Promise.all([
           fetch('/api/models'),
           fetch('/api/config'),
-          fetch('/api/usage').catch(() => null),
         ]);
         const data = await modelsRes.json();
         const providers = await configRes.json();
-        let usageReports = [];
-        if (usageRes && usageRes.ok) {
-          try {
-            const usageData = await usageRes.json();
-            usageReports = Array.isArray(usageData.reports) ? usageData.reports : [];
-          } catch {
-            usageReports = [];
-          }
-        }
 
-        // Calculate QoS for each model
+        // Calculate QoS for each model. Quota reports are already attached by
+        // /api/models; avoid a second usage request on every dashboard refresh.
         allModels = data.models.map(m => {
-          const apiUsage = usageReports.filter(report =>
-            report && report.providerKey === m.providerKey && (!report.model || report.model === m.modelId)
-          );
-          if (apiUsage.length > 0) {
-            m.providerUsages = apiUsage;
-            m.providerUsage = apiUsage.find(report => report.model === m.modelId) || apiUsage[0];
-          }
           let isRateLimited = false;
           let rateLimitResetMs = 0;
           if (m.rateLimit) {
@@ -3799,7 +3766,6 @@
           <td style="cursor:pointer;" onclick='openDrawer(${JSON.stringify(first).replace(/'/g, "&apos;")})'>
             <div style="font-weight: 700; font-size: 0.92rem; display:flex; align-items:center; gap:8px;">
               <span title="${escapeHtml(cleanHeadingModelName(g.label))}">${emoji}${escapeHtml(cleanHeadingModelName(g.label))}</span>
-              ${testBtnHTML({ rowKey: 'g:' + g.key, members: g.members, hasAuth: g.members.some(m => m.status !== 'noauth') })}
               <span class="pin-row-btn ${isPinned ? 'pinned' : ''}" onclick="event.stopPropagation(); pinModel('${isPinned ? '' : first.modelId}', '')" title="${isPinned ? 'Unpin model' : 'Pin model'}">📌</span>
             </div>
             <div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(g.canonicalId)} • ${members.length} provider${members.length > 1 ? 's' : ''}</div>
@@ -3822,15 +3788,16 @@
             <div style="font-weight: 600; font-variant-numeric: tabular-nums;" title="${s.bestCtxMember && s.bestCtxMember.contextSource === 'observed' ? 'Bounds inferred from real requests' : (s.bestCtxMember && s.bestCtxMember.context ? 'Known context window' : 'Largest context window among providers')}">${s.bestCtxMember && s.bestCtxMember.context ? escapeHtml(s.bestCtxMember.context) : '<span style="font-size:0.75rem;color:var(--text-muted);">—</span>'}</div>
           </td>
           <td><div style="font-size:0.75rem;color:var(--text-muted);">—</div></td>
+          <td><div style="display: flex; align-items: center; gap: 6px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: ${statusColor}"></span><span style="font-size: 0.75rem; font-weight: 500;">${statusText}</span></div></td>
           <td>${(() => {
-            // Combined status/response for group: show test response if one exists, else status
+            // Group response: the most recent successful test across the group's providers
             const lastR = groupLastResponse(g);
             const hasAuth = g.members.some(m => m.status !== 'noauth');
             if (hasAuth && lastR && (lastR.text != null || lastR.error != null)) {
               const expired = lastR.expiresAt != null && Date.now() > Number(lastR.expiresAt);
-              if (!expired) return responseCellHTML(lastR, { rowKey: 'g:' + g.key, hasAuth: true });
+              if (!expired) return responseCellHTML(lastR, { rowKey: 'g:' + g.key, members: g.members, hasAuth: true });
             }
-            return `<div style="display: flex; align-items: center; gap: 6px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: ${statusColor}"></span><span style="font-size: 0.75rem; font-weight: 500;">${statusText}</span></div>`;
+            return '<div class="test-cell"></div>';
           })()}</td>
         `;
     }
@@ -3860,6 +3827,11 @@
         m.providerKey.toLowerCase().includes(searchTerm) ||
         m.modelId.toLowerCase().includes(searchTerm)
       );
+
+      // 1.25. Hide models with no API key configured — they can't be tested or
+      // used, so their rows (and any group left with only noauth providers) drop
+      // out of the main table entirely.
+      filtered = filtered.filter(m => m.status !== 'noauth');
 
       // 1.5. Apply Filter Rules (minSweScore, excludedProviders) - marks as excluded for display
       const { minSweScore, excludedProviders } = filterRules;
@@ -4026,21 +3998,6 @@
         pinBtn.onclick = (e) => { e.stopPropagation(); pinModel(isPinnedRow ? '' : m.modelId, m.providerKey); };
         pinBtn.title = isPinnedRow ? 'Unpin model' : 'Pin model';
       }
-      // Keep the Test button present/absent as auth changes; never clobber an in-flight test.
-      if (nameSpan && !inflightTests.has(getModelRowKey(m))) {
-        const hasTestBtn = !!modelCell.querySelector('.test-btn');
-        const wantsTestBtn = m.status !== 'noauth';
-        if (wantsTestBtn && !hasTestBtn) {
-          nameSpan.insertAdjacentHTML('afterend', testBtnHTML({
-            rowKey: getModelRowKey(m),
-            providerKey: m.providerKey,
-            modelId: m.modelId,
-            hasAuth: true,
-          }));
-        } else if (!wantsTestBtn && hasTestBtn) {
-          modelCell.querySelector('.test-btn').remove();
-        }
-      }
       modelCell.onclick = () => openDrawer(m);
 
       // Update context window (known limit or observed bounds)
@@ -4049,19 +4006,19 @@
         ? `<div style="font-weight: 600; font-variant-numeric: tabular-nums;" title="${m.contextSource === 'observed' ? 'Bounds inferred from real requests' : 'Known context window'}">${escapeHtml(m.context)}</div>`
         : '<div style="font-weight: 600; font-variant-numeric: tabular-nums;"><span style="font-size:0.75rem;color:var(--text-muted);">—</span></div>';
 
-      // Update quota cell
-      const quotaCell = row.cells[6];
-      quotaCell.innerHTML = quotaCellHTML(m);
-
       // Intelligence lives only in the model header row — it's identical across a
       // model's providers, so provider rows show a placeholder instead.
       const intellCell = row.cells[1];
       intellCell.innerHTML = `<div style="font-weight: 600;"><span style="font-size:0.75rem;color:var(--text-muted);">—</span></div>`;
 
-      // Update combined status/response cell (col 7); never clobber an in-flight test
-      const combinedCell = row.cells[7];
-      if (combinedCell && !inflightTests.has(getModelRowKey(m))) {
-        combinedCell.innerHTML = `<div style="display: flex; align-items: center; gap: 6px;">${combinedStatusCellHTML(m)}</div>`;
+      // Update status cell (col 6) and response cell (col 7); never clobber an in-flight test
+      const statusCell = row.cells[6];
+      if (statusCell && !inflightTests.has(getModelRowKey(m))) {
+        statusCell.innerHTML = `<div style="display: flex; align-items: center; gap: 6px;">${statusCellHTML(m)}</div>`;
+      }
+      const responseCell = row.cells[7];
+      if (responseCell && !inflightTests.has(getModelRowKey(m))) {
+        responseCell.innerHTML = responseCellHTML(m.lastResponse, { rowKey: getModelRowKey(m), providerKey: m.providerKey, modelId: m.modelId, hasAuth: m.status !== 'noauth', status: m.status });
       }
 
       // Update ping (with uptime% and rate-limit icon in the subtitle)
@@ -4159,14 +4116,15 @@
       return `<button class="test-btn" onclick="event.stopPropagation(); testModelButton(this, ${btnArgs})" title="Send 'Respond with exactly the single word: Ready' to this model">Test</button>`;
     }
 
-    // Builds the Response cell: just the last response text (the Test button now
-    // lives in the name cell). opts: { rowKey, providerKey?, modelId?, members? }
+    // Builds the Response cell: the Test button plus the latest response text.
+    // opts: { rowKey, providerKey?, modelId?, members? }
     function responseCellHTML(lastResponse, opts) {
       // Models with no API key / auth configured show a placeholder.
       if (opts && opts.hasAuth === false) {
         return '<div class="test-cell"><span class="test-meta" style="color:var(--text-muted);">—</span></div>';
       }
-      if (!lastResponse) return '<div class="test-cell"></div>';
+      const btn = testBtnHTML(opts);
+      if (!lastResponse) return `<div class="test-cell">${btn}</div>`;
       // Timeout errors carry an expiry; once it passes, treat the result as absent
       // so a stale timeout no longer populates the test result field.
       const expired = lastResponse.expiresAt != null && Date.now() > Number(lastResponse.expiresAt);
@@ -4193,7 +4151,7 @@
       const body = text
         ? `<div class="test-response ${errText ? 'err' : 'ok'}"${expAttr} title="${escapeAttr(text)}">${escapeHtml(text)}</div>`
         : (errText ? `<div class="test-response err"${expAttr}>HTTP ${lastResponse.status}</div>` : '');
-      return `<div class="test-cell">${body}${meta}</div>`;
+      return `<div class="test-cell">${btn}${body}${meta}</div>`;
     }
 
     function escapeAttr(s) {
@@ -4220,13 +4178,12 @@
     // writes the full response (or error) into the Response cell, then refreshes
     // the table so TTFT / Tok/s / Context pick up the stats recorded from it.
     async function testModelButton(btn, opts) {
-      const tr = btn.closest('tr');
-      const nameCell = btn.closest('td');
-      const respCell = tr ? tr.cells[tr.cells.length - 1] : null;
+      const cell = btn.closest('td');
       const rowKey = opts && opts.rowKey;
-      if (!nameCell || !rowKey || inflightTests.has(rowKey)) return;
+      if (!cell || !rowKey || inflightTests.has(rowKey)) return;
       inflightTests.add(rowKey);
-      btn.outerHTML = '<button class="test-btn" disabled>⏳ Testing…</button>';
+      cell.innerHTML = '<div class="test-cell"><button class="test-btn" disabled>⏳ Testing…</button></div>';
+      let refreshAfterTest = false;
       try {
         const res = await fetch('/api/test-model', {
           method: 'POST',
@@ -4244,39 +4201,40 @@
         const lastResponse = {
           text: data.text != null ? data.text : null,
           error: data.error != null ? data.error : null,
-          status: data.status != null ? data.status : (data.ok ? 200 : 0),
+          status: data.status != null ? data.status : (data.ok ? 200 : res.status || 0),
           at: Date.now(),
           ttftMs: data.ttftMs != null ? data.ttftMs : null,
           tps: data.tps != null ? data.tps : null,
           tokens: data.tokens != null ? data.tokens : null,
           expiresAt: data.expiresAt != null ? data.expiresAt : null,
         };
-        // Errors from a group test never propagate to the heading row — leave the
-        // Response cell empty there; the error lives on the provider row.
+        // A non-2xx response or `{ ok: false }` result did not complete a
+        // successful model test. Keep the diagnostic visible instead of
+        // immediately replacing it with the next polling refresh.
+        if (!res.ok || data.ok === false) {
+          cell.innerHTML = responseCellHTML(lastResponse, opts);
+          return;
+        }
+        refreshAfterTest = true;
+        // Errors from a group test never propagate to the heading row; leave the
+        // Response cell's Test button there and keep the error on the provider row.
         const isGroupTest = opts && opts.members && opts.members.length > 0;
-        if (respCell) {
-          respCell.innerHTML = (isGroupTest && lastResponse.error)
-            ? responseCellHTML(null, opts)
-            : responseCellHTML(lastResponse, opts);
-        }
+        cell.innerHTML = (isGroupTest && lastResponse.error)
+          ? responseCellHTML(null, opts)
+          : responseCellHTML(lastResponse, opts);
       } catch (err) {
-        if (respCell) {
-          respCell.innerHTML = responseCellHTML({
-            text: null,
-            error: err?.message || 'Network error',
-            status: 0,
-            at: Date.now(),
-            ttftMs: null,
-            tps: null,
-            tokens: null,
-          }, opts);
-        }
+        cell.innerHTML = responseCellHTML({
+          text: null,
+          error: err?.message || 'Network error',
+          status: 0,
+          at: Date.now(),
+          ttftMs: null,
+          tps: null,
+          tokens: null,
+        }, opts);
       } finally {
-        // Restore the Test button (a stale poll while in-flight kept the ⏳ state).
-        const cur = nameCell.querySelector('.test-btn');
-        if (cur && cur.disabled) cur.outerHTML = testBtnHTML(opts);
         inflightTests.delete(rowKey);
-        fetchData(); // refresh TTFT / Tok/s / Context from this response
+        if (refreshAfterTest) fetchData(); // refresh stats recorded by a completed test
       }
     }
 
@@ -4370,6 +4328,14 @@
               <span class="paid-status" title="Payment required — add billing to use this model">💲 Paid</span>
             </div>`;
       }
+      // Model can't accept text chat (image/video only): 'Incompatible' so it
+      // moves to the unavailable list rather than reading as a plain 'Down'.
+      if ((m.lastResponse && m.lastResponse.incompatible === true) || m.status === 'incompatible') {
+        return `
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="color: var(--text-muted);" title="Model does not support text chat (image/video only)">Incompatible</span>
+            </div>`;
+      }
       // Model is gone (410 Gone / end-of-life): persistent 'Dead' status, not 'Down'
       if ((m.lastResponse && m.lastResponse.dead === true) || m.status === 'dead') {
         return `
@@ -4397,197 +4363,6 @@
     // Combined Status + Response column — one cell that picks the most useful
     // thing to show. Priority: paid/dead status → rate-limit countdown → test
     // response text → plain status dot + label.
-    // Renders the Quota column: free-tier usage from x-ratelimit-* headers or
-    // Gemini-style quota error bodies. Shows usage bar + reset countdown when
-    // data is available, or a muted dash otherwise.
-    function providerUsageLine(usage) {
-      const used = usage.used;
-      const limit = usage.limit;
-      const remaining = usage.remaining;
-      const label = usage.unit || 'units';
-      const reset = usage.resetAt && usage.resetAt > Date.now()
-        ? `<span style="color:var(--text-muted);"> · 🕑 ${formatCountdown(usage.resetAt - Date.now())}</span>` : '';
-      const scope = usage.model || usage.project || usage.account || usage.scope || 'account';
-      const window = usage.window ? ` · ${usage.window}` : '';
-      if (used != null && limit != null && limit > 0) {
-        const pct = Math.max(0, Math.min(100, Math.round((used / limit) * 100)));
-        const color = pct >= 90 ? 'var(--error)' : (pct >= 50 ? 'var(--warning)' : 'var(--success)');
-        return `<div title="Provider-reported ${escapeHtml(scope)} usage">
-          <span>${formatQuotaNum(used)}/${formatQuotaNum(limit)} ${escapeHtml(label)}${escapeHtml(window)} <small style="color:var(--text-muted);">reported</small>${reset}</span>
-          <div class="quota-meter"><div style="width:${Math.max(2, pct)}%;background:${color};"></div></div>
-        </div>`;
-      }
-      return `<div title="Provider-reported ${escapeHtml(scope)} usage">
-        ${used != null ? `${formatQuotaNum(used)} used` : ''}${remaining != null ? `${used != null ? ' · ' : ''}${formatQuotaNum(remaining)} remaining` : ''} ${escapeHtml(label)}${escapeHtml(window)} <small>reported</small>${reset}
-      </div>`;
-    }
-
-    function quotaCellHTML(m) {
-      const rl = m.rateLimit;
-      const usages = Array.isArray(m.providerUsages) && m.providerUsages.length > 0
-        ? m.providerUsages
-        : (m.providerUsage ? [m.providerUsage] : []);
-
-      // Authenticated provider usage is authoritative when available. Keep the
-      // source visible so local counters and response headers are not mistaken
-      // for provider-reported consumption.
-      const usableUsages = usages.filter(usage => usage && (
-        usage.used != null ||
-        usage.limit != null ||
-        usage.remaining != null ||
-        usage.resetAt != null
-      ));
-      if (usableUsages.length > 0) {
-        return `<div class="quota-report-list">${usableUsages.map(providerUsageLine).join('')}</div>`;
-      }
-
-      // Prefer request-based info, fall back to token-based, then credits.
-      // If no server-reported limits, show known quota + daily proxy count.
-      let limit, remaining, resetAt, label;
-      if (rl && rl.limitRequests != null && rl.limitRequests > 0) {
-        limit = rl.limitRequests;
-        remaining = rl.remainingRequests;
-        resetAt = rl.resetRequestsAt;
-        label = 'req';
-      } else if (rl && rl.limitTokens != null && rl.limitTokens > 0) {
-        limit = rl.limitTokens;
-        remaining = rl.remainingTokens;
-        resetAt = rl.resetTokensAt;
-        label = 'tokens';
-      } else if (rl && rl.creditLimit != null && rl.creditLimit > 0) {
-        limit = rl.creditLimit;
-        remaining = rl.creditRemaining;
-        resetAt = rl.creditResetAt;
-        label = 'credits';
-      }
-
-      if (limit != null && remaining != null) {
-        const used = Math.max(0, Math.min(limit, limit - remaining));
-        const pct = Math.max(0, Math.min(100, Math.round((used / limit) * 100)));
-        const warn = pct >= 90;
-        const barColor = warn ? 'var(--error)' : (pct >= 50 ? 'var(--warning)' : 'var(--success)');
-        const barWidth = Math.max(2, pct);
-        const resetPart = resetAt && resetAt > Date.now()
-          ? ` · <span style="font-size:0.68rem; color:var(--text-muted);" title="Resets ${formatClockTime(resetAt)}">🕑 ${formatCountdown(resetAt - Date.now())}</span>`
-          : '';
-        return `<div style="font-size:0.75rem; font-weight:500; line-height:1.3;" title="${used} / ${limit} ${label} used">
-          <span>${formatQuotaNum(used)}/${formatQuotaNum(limit)} ${label}</span>
-          <div style="margin-top:2px; height:3px; border-radius:3px; background:var(--border); overflow:hidden;">
-            <div style="height:100%; width:${barWidth}%; background:${barColor}; border-radius:3px; transition:width 1.5s;"></div>
-          </div>
-          ${resetPart}
-        </div>`;
-      }
-      if (limit != null) {
-        const resetPart = resetAt && resetAt > Date.now()
-          ? `<br><span style="font-size:0.68rem;color:var(--text-muted);">resets ${formatClockTime(resetAt)}</span>` : '';
-        return `<div style="font-size:0.7rem;color:var(--text-muted);" title="Provider-reported ${label} limit">
-          ${formatQuotaNum(limit)} ${label} <small>reported limit</small>${resetPart}
-        </div>`;
-      }
-
-      // Quota error body without numeric limits: show the quota name + reset
-      if (rl && rl.quota) {
-        const q = rl.quota;
-        const name = (q.quotaId || q.quotaMetric || 'quota exceeded').replace(/([a-z])([A-Z])/g, '$1 $2').slice(0, 40);
-        const rAt = rl.resetRequestsAt;
-        if (rAt && rAt > Date.now()) {
-          return `<div style="font-size:0.7rem; color:var(--warning);" title="${escapeHtml(name)}">
-            <span style="color:var(--text-muted);">🕑</span> ${formatCountdown(rAt - Date.now())}
-          </div>`;
-        }
-        return `<div style="font-size:0.7rem; color:var(--warning);" title="${escapeHtml(name)}">Limit</div>`;
-      }
-
-      // Known provider quota + daily proxy count: show usage vs the known limit.
-      // This is the common case for NVIDIA (40 RPM), Google (20/day), OpenRouter (50/day)
-      // and other providers that don't send x-ratelimit-* headers on success.
-      const kq = m.knownQuota;
-      const dpc = m.providerDailyProxyCount ?? m.dailyProxyCount;
-      if (kq) {
-        const quotaResetWindow = kq.requestsPerDay != null ? 'day' : kq.window;
-        // A local counter is only comparable to a daily provider limit. Do not
-        // present a UTC-day count as RPM/TPM/RPS usage.
-        let kqLimit, kqWindow, kqLabel, kqTitle;
-        if (kq.requestsPerDay != null) {
-          kqLimit = kq.requestsPerDay;
-          kqWindow = 'day';
-          kqLabel = 'req/day';
-          kqTitle = `${kqLimit} requests/day free tier limit`;
-        }
-
-        if (kqLimit != null && dpc != null && dpc > 0) {
-          // Show proxy count vs known limit with a usage bar
-          const used = dpc;
-          const pct = Math.round(Math.min(100, (used / kqLimit) * 100));
-          const warn = pct >= 90;
-          const barColor = warn ? 'var(--error)' : (pct >= 50 ? 'var(--warning)' : 'var(--success)');
-          const barWidth = Math.max(2, pct);
-          const ra = rl && rl.retryAfterMs;
-          const raStr = ra ? ` · retry-after ${Math.round(ra / 1000)}s` : '';
-          const reset = quotaWindowReset(quotaResetWindow);
-          return `<div style="font-size:0.75rem; font-weight:500; line-height:1.3;" title="Local count only; ${used} / ${kqLimit} ${kqLabel} (${escapeHtml(kq.source || kqTitle || '')})${raStr}">
-            <span>${formatQuotaNum(used)}/${formatQuotaNum(kqLimit)} ${kqLabel} <small style="color:var(--text-muted);">estimated</small></span>
-            <div style="margin-top:2px; height:3px; border-radius:3px; background:var(--border); overflow:hidden;">
-              <div style="height:100%; width:${barWidth}%; background:${barColor}; border-radius:3px; transition:width 1.5s;"></div>
-            </div>
-            ${reset ? `<div style="font-size:0.68rem;color:var(--text-muted);">window resets ~${formatClockTime(reset)}</div>` : ''}
-          </div>`;
-        }
-
-        if (kqLimit != null) {
-          return `<div style="font-size:0.7rem; color:var(--text-muted);" title="${escapeHtml(kq.source || kqTitle || '')}">
-            ${formatQuotaNum(kqLimit)} ${kqLabel} <small>estimated</small>${quotaWindowReset(quotaResetWindow) ? `<br>window resets ~${formatClockTime(quotaWindowReset(quotaResetWindow))}` : ''}
-          </div>`;
-        }
-
-        const referenceLimits = [
-          kq.requestsPerMinute != null ? `${formatQuotaNum(kq.requestsPerMinute)} req/min` : null,
-          kq.requestsPerSecond != null ? `${formatQuotaNum(kq.requestsPerSecond)} req/sec` : null,
-          kq.tokensPerMinute != null ? `${formatQuotaNum(kq.tokensPerMinute)} tokens/min` : null,
-          kq.tokensPerDay != null ? `${formatQuotaNum(kq.tokensPerDay)} tokens/day` : null,
-          kq.creditsPerMonth != null ? `${formatQuotaNum(kq.creditsPerMonth)} credits/month` : null,
-        ].filter(Boolean);
-        if (referenceLimits.length > 0) {
-          return `<div style="font-size:0.7rem; color:var(--text-muted);" title="${escapeHtml(kq.source || '')}">
-            ${referenceLimits.join(' · ')} <small>estimated</small>${quotaWindowReset(quotaResetWindow) ? `<br>window resets ~${formatClockTime(quotaWindowReset(quotaResetWindow))}` : ''}
-          </div>`;
-        }
-
-        if (kq.limitScope && dpc != null) {
-          const reset = quotaWindowReset(quotaResetWindow);
-          return `<div style="font-size:0.7rem;color:var(--text-muted);" title="${escapeHtml(kq.source || '')}">
-            ${formatQuotaNum(dpc)} req today · account limit
-            ${reset ? `<br><span style="font-size:0.68rem;">window resets ~${formatClockTime(reset)}</span>` : ''}
-          </div>`;
-        }
-      }
-
-      // Fallback: no server headers, no known quota — show client-tracked daily
-      // proxy request count.
-      if (dpc != null && dpc > 0) {
-        const ra = rl && rl.retryAfterMs;
-        const raStr = ra ? ` · retry-after ${Math.round(ra / 1000)}s` : '';
-        return `<div style="font-size:0.7rem; color:var(--text-muted);" title="Proxied ${dpc} request${dpc === 1 ? '' : 's'} today via modelrelay${raStr}">
-          ${dpc} req today
-        </div>`;
-      }
-
-      if (kq?.source) {
-        return `<div style="font-size:0.7rem; color:var(--text-muted);" title="${escapeHtml(kq.source)}">${kq.limitScope ? 'Daily limit · account/model-specific' : 'Provider-reported limits only'}</div>`;
-      }
-
-      return '<div style="font-size:0.75rem;color:var(--text-muted);">—</div>';
-    }
-
-    // Shorthand for large numbers: 1200 → "1.2k", 1000000 → "1M"
-    function formatQuotaNum(n) {
-      if (n == null || !Number.isFinite(n)) return '—';
-      if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
-      if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'k';
-      return String(Math.round(n));
-    }
-
     function combinedStatusCellHTML(m) {
       const currentStatus = String(m.status || '').toLowerCase();
       // Paid: show dollar icon + 'Paid'
@@ -4616,7 +4391,7 @@
       }
       // Test response exists? Show it
       const hasAuth = m.status !== 'noauth';
-      if (hasAuth && currentStatus === 'up' && m.lastResponse) {
+      if (hasAuth && m.lastResponse) {
         const expired = m.lastResponse.expiresAt != null && Date.now() > Number(m.lastResponse.expiresAt);
         if (!expired && (m.lastResponse.text != null || m.lastResponse.error != null)) {
           const r = responseCellHTML(m.lastResponse, { rowKey: getModelRowKey(m), providerKey: m.providerKey, modelId: m.modelId, hasAuth: true, status: m.status });
@@ -4686,36 +4461,6 @@
       return g.members.length > 0 && g.members.every(m => isRowStruck(m));
     }
 
-    // Generates a single graveyard row for a model group.
-    function graveyardRowHTML(g) {
-      const members = g.members;
-      const first = members[0];
-      const paidCount = members.filter(m => m.lastResponse && m.lastResponse.paymentRequired === true).length;
-      const deadCount = members.filter(m => (m.lastResponse && m.lastResponse.dead === true) || m.status === 'dead').length;
-      const incompatCount = members.filter(m => (m.lastResponse && m.lastResponse.incompatible === true) || m.status === 'incompatible').length;
-      const parts = [];
-      if (paidCount > 0) parts.push(`${paidCount} paid`);
-      if (deadCount > 0) parts.push(`${deadCount} dead`);
-      if (incompatCount > 0) parts.push(`${incompatCount} incompatible`);
-      const statusText = parts.join(' / ');
-      const last = members
-        .map(member => member.lastResponse)
-        .filter(Boolean)
-        .sort((a, b) => Number(b.at || 0) - Number(a.at || 0))[0];
-      const respText = last && last.error ? `<div class="test-response err" title="${escapeAttr(String(last.error))}">${escapeHtml(String(last.error).slice(0, 120))}</div>` : '';
-      return `
-        <tr class="row-struck">
-          <td style="cursor:pointer;" onclick='openDrawer(${JSON.stringify(first).replace(/'/g, "&apos;")})'>
-            <div style="font-weight: 700; font-size: 0.85rem;">${escapeHtml(cleanHeadingModelName(g.label))}</div>
-            <div style="font-size: 0.72rem; color: var(--text-muted);">${escapeHtml(g.canonicalId)} • ${members.length} provider${members.length > 1 ? 's' : ''}</div>
-          </td>
-          <td>
-            <div style="font-size: 0.78rem; font-weight: 500; margin-bottom: 3px;">${statusText}</div>
-            ${respText}
-          </td>
-        </tr>`;
-    }
-
     // Renders the graveyard table: all groups whose every provider row is paid or
     // dead. Auto-hides the entire <details> panel when there's nothing to show.
     function renderGraveyard(groups) {
@@ -4777,32 +4522,52 @@
       graveyardCurrentOrder = orderKeys;
     }
 
-    // Like graveyardRowHTML but returns just the inner cell HTML for reconciliation.
+    // Like the main model-group row, but with unavailable-state labels in Status.
+    // Keeping the same eight cells makes the unavailable table directly comparable.
     function graveyardRowHTMLInner(g) {
       const members = g.members;
       const first = members[0];
+      const s = getGroupSummary(g);
+      const fastest = s.fastest;
+      const hasPing = fastest !== null && fastest !== Infinity;
       const paidCount = members.filter(m => m.lastResponse && m.lastResponse.paymentRequired === true).length;
       const deadCount = members.filter(m => (m.lastResponse && m.lastResponse.dead === true) || m.status === 'dead').length;
       const incompatCount = members.filter(m => (m.lastResponse && m.lastResponse.incompatible === true) || m.status === 'incompatible').length;
-      const parts = [];
-      if (paidCount > 0) parts.push(`${paidCount} paid`);
-      if (deadCount > 0) parts.push(`${deadCount} dead`);
-      if (incompatCount > 0) parts.push(`${incompatCount} incompatible`);
-      const statusText = parts.join(' / ');
-      const last = members
-        .map(member => member.lastResponse)
-        .filter(Boolean)
-        .sort((a, b) => Number(b.at || 0) - Number(a.at || 0))[0];
-      const respText = last && last.error ? `<div class="test-response err" title="${escapeAttr(String(last.error))}">${escapeHtml(String(last.error).slice(0, 120))}</div>` : '';
+      const statusParts = [];
+      if (paidCount > 0) statusParts.push(`${paidCount} paid`);
+      if (deadCount > 0) statusParts.push(`${deadCount} dead`);
+      if (incompatCount > 0) statusParts.push(`${incompatCount} incompatible`);
+      const statusText = statusParts.join(' / ') || 'Unavailable';
+      const lastResponse = groupLastResponse(g);
+      const hasAuth = members.some(m => m.status !== 'noauth');
+
       return `
           <td style="cursor:pointer;" onclick='openDrawer(${JSON.stringify(first).replace(/'/g, "&apos;")})'>
-            <div style="font-weight: 700; font-size: 0.85rem;">${escapeHtml(cleanHeadingModelName(g.label))}</div>
-            <div style="font-size: 0.72rem; color: var(--text-muted);">${escapeHtml(g.canonicalId)} • ${members.length} provider${members.length > 1 ? 's' : ''}</div>
+            <div style="font-weight: 700; font-size: 0.92rem; display:flex; align-items:center; gap:8px;">
+              <span title="${escapeHtml(cleanHeadingModelName(g.label))}">${escapeHtml(cleanHeadingModelName(g.label))}</span>
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(g.canonicalId)} • ${members.length} provider${members.length > 1 ? 's' : ''}</div>
           </td>
+          <td><div style="font-weight: 600;">${getBenchmarkTableDisplayValue(s.bestIntellMember.intell, s.bestIntellMember.qualitySource, s.bestIntellMember.qualityDetail, s.bestIntellMember.elo)}</div></td>
+          <td class="text-right">
+            <div style="display: flex; align-items: center; gap: 8px; justify-content: flex-end;">
+              <div class="ping-dot ${hasPing ? 'active ' + getPingAnimClass(fastest) : ''}" style="--speed: ${getPingSpeed(fastest)}"></div>
+              <div style="font-variant-numeric: tabular-nums; text-align:right; line-height:1.3;">
+                ${hasPing
+          ? `<div style="font-size:0.82rem;">${fastest}ms</div><div style="font-size:0.7rem; color:var(--text-muted);">${s.bestUptime}%</div>`
+          : '<span style="font-size: 0.75rem; color: var(--text-muted);">OFFLINE</span>'}
+              </div>
+            </div>
+          </td>
+          ${formatTtftCell(s.minTtft, 'best')}
+          ${formatTpsCell(s.maxTps, 'best')}
           <td>
-            <div style="font-size: 0.78rem; font-weight: 500; margin-bottom: 3px;">${statusText}</div>
-            ${respText}
-          </td>`;
+            <div style="font-weight: 600; font-variant-numeric: tabular-nums;" title="${s.bestCtxMember && s.bestCtxMember.contextSource === 'observed' ? 'Bounds inferred from real requests' : (s.bestCtxMember && s.bestCtxMember.context ? 'Known context window' : 'Largest context window among providers')}">${s.bestCtxMember && s.bestCtxMember.context ? escapeHtml(s.bestCtxMember.context) : '<span style="font-size:0.75rem;color:var(--text-muted);">—</span>'}</div>
+          </td>
+          <td><div style="font-size:0.75rem;font-weight:600;">${escapeHtml(statusText)}</div></td>
+          <td>${hasAuth
+            ? responseCellHTML(lastResponse, { rowKey: 'g:' + g.key, members, hasAuth: true })
+            : '<div class="test-cell"></div>'}</td>`;
     }
 
     function createRow(m) {
@@ -4820,7 +4585,6 @@
           <td style="cursor:pointer;" onclick='openDrawer(${JSON.stringify(m).replace(/'/g, "&apos;")})'>
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-weight: 600;" title="${escapeHtml(m.providerKey)}">${m.providerKey}</span>
-              ${testBtnHTML({ rowKey: getModelRowKey(m), providerKey: m.providerKey, modelId: m.modelId, hasAuth: m.status !== 'noauth' })}
               <span class="pin-row-btn ${isPinnedRow ? 'pinned' : ''}" onclick="event.stopPropagation(); pinModel('${isPinnedRow ? '' : m.modelId}', '${m.providerKey}')" title="${isPinnedRow ? 'Unpin model' : 'Pin model'}">📌</span>
             </div>
           </td>
@@ -4840,8 +4604,8 @@
           <td>
             <div style="font-weight: 600; font-variant-numeric: tabular-nums;" title="${m.contextSource === 'observed' ? 'Bounds inferred from real requests' : (m.context ? 'Known context window' : 'No context data yet — will fill in as the model is used')}">${m.context ? escapeHtml(m.context) : '<span style="font-size:0.75rem;color:var(--text-muted);">—</span>'}</div>
           </td>
-          <td>${quotaCellHTML(m)}</td>
-          <td><div style="display: flex; align-items: center; gap: 6px;">${combinedStatusCellHTML(m)}</div></td>
+          <td><div style="display: flex; align-items: center; gap: 6px;">${statusCellHTML(m)}</div></td>
+          <td>${responseCellHTML(m.lastResponse, { rowKey: getModelRowKey(m), providerKey: m.providerKey, modelId: m.modelId, hasAuth: m.status !== 'noauth', status: m.status })}</td>
         `;
       return tr;
     }

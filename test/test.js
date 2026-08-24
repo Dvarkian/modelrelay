@@ -29,6 +29,7 @@ import {
   selectNextApiKeyFromPool,
   pickKeyLevelRateLimit,
   mergeRateLimits,
+  reconcileRateLimitState,
   applyRateLimitCapture,
   hostnameOf,
   isLoopbackHostname,
@@ -389,6 +390,29 @@ describe('provider usage reports', () => {
     assert.equal(report.source, 'provider-api')
     assert.ok(report.resetAt > Date.now())
     assert.equal(normalizeProviderUsageReport('groq', { usage: 4 }).at(0).limit, null)
+  })
+
+  it('normalizes request/token aliases into separate metric reports', () => {
+    const reports = normalizeProviderUsageReport('groq', [
+      { requestsUsed: 12, requestsLimit: 100, requestsRemaining: 88, resetAt: 1893456000000 },
+      { tokensUsed: 40, tokensLimit: 1000, tokensRemaining: 960, unit: 'tokens' },
+    ], { fetchedAt: 123, freshness: 'fresh' })
+    assert.equal(reports[0].metric, 'requests')
+    assert.equal(reports[0].used, 12)
+    assert.equal(reports[0].remaining, 88)
+    assert.equal(reports[1].metric, 'tokens')
+    assert.equal(reports[1].limit, 1000)
+    assert.equal(reports[0].fetchedAt, 123)
+    assert.equal(reports[0].freshness, 'fresh')
+  })
+
+  it('emits separate metrics when one payload contains request and token fields', () => {
+    const reports = normalizeProviderUsageReport('googleai', {
+      requestsUsed: 2, requestsLimit: 20,
+      tokensUsed: 100, tokensLimit: 1000,
+    })
+    assert.deepEqual(reports.map(report => report.metric), ['requests', 'tokens'])
+    assert.equal(reports[1].remaining, 900)
   })
 
   it('selects model reports before account reports and serializes a stable API shape', () => {
@@ -2249,6 +2273,39 @@ describe('rate-limit scoping', () => {
     assert.equal(findBestModel(results).modelId, 'acme/model-b')
   })
 
+  it('clears expired 429 state after a successful response but keeps fresh headers', () => {
+    const state = reconcileRateLimitState({
+      wasRateLimited: true,
+      capturedAt: 1,
+      resetRequestsAt: 2,
+      quota: { quotaId: 'old' },
+      limitRequests: 100,
+      remainingRequests: 0,
+    }, { limitRequests: 100, remainingRequests: 99 }, 200, 10)
+    assert.equal(state.wasRateLimited, undefined)
+    assert.equal(state.resetRequestsAt, undefined)
+    assert.equal(state.quota, undefined)
+    assert.equal(state.limitRequests, 100)
+    assert.equal(state.remainingRequests, 99)
+  })
+
+  it('clears old reset and quota fields after a successful response without headers', () => {
+    const state = reconcileRateLimitState({
+      wasRateLimited: true, resetRequestsAt: 500, quota: { quotaId: 'old' }, retryAfterMs: 20,
+    }, {}, 200, 10)
+    assert.equal(state, null)
+  })
+
+  it('keeps a future reset and 429 state until the provider window expires', () => {
+    const state = reconcileRateLimitState({
+      wasRateLimited: true,
+      capturedAt: 100,
+      resetRequestsAt: 500,
+    }, null, 429, 200)
+    assert.equal(state.wasRateLimited, true)
+    assert.equal(state.resetRequestsAt, 500)
+  })
+
   it('merges OpenRouter key credits provider-wide without leaking per-model 429 state', () => {
     const providerKey = 'openrouter'
     const rateLimited = mockResult({
@@ -3081,15 +3138,19 @@ describe('package and entrypoint sanity', () => {
 
   it('adds a Response column with a Test button that captures full model responses', () => {
     const serverContent = readFileSync(join(ROOT, 'lib/server.js'), 'utf8')
-    // Column header exists — Status and Response are now merged into one column
-    assert.ok(dashboardContent.includes('>Status / Response</th>'))
+    // Column headers — Status and Response are separate columns
+    assert.ok(dashboardContent.includes('>Status <i class="sort-arrow"'))
+    assert.ok(dashboardContent.includes('>Response</th>'))
     // Test flow: button handler, response cell renderer, and in-flight guard
     assert.ok(dashboardContent.includes("function testModelButton(btn, opts)"))
     assert.ok(dashboardContent.includes("function responseCellHTML(lastResponse, opts)"))
+    assert.ok(dashboardContent.includes('const btn = testBtnHTML(opts)'))
+    assert.ok(dashboardContent.includes('data.ok === false'))
     assert.ok(dashboardContent.includes('inflightTests'))
     assert.ok(dashboardContent.includes("fetch('/api/test-model'"))
     // Server: route exists, persists the response, records real usage stats
     assert.ok(serverContent.includes("app.post('/api/test-model'"))
+    assert.ok(serverContent.includes('const modelIdMatches ='))
     assert.ok(serverContent.includes('function recordTestResponse(result, info)'))
     assert.ok(serverContent.includes('Respond with exactly the single word: Ready'))
     assert.ok(serverContent.includes('lastResponse'))
@@ -3097,6 +3158,26 @@ describe('package and entrypoint sanity', () => {
     assert.ok(dashboardContent.includes('paymentRequired === true'))
     assert.ok(dashboardContent.includes('paid-status'))
     assert.ok(serverContent.includes('paymentRequired'))
+  })
+
+  it('removes the quota column while preserving status and response columns', () => {
+    assert.equal(dashboardContent.includes('>Quota</th>'), false)
+    assert.equal(dashboardContent.includes('quotaCellHTML(m)'), false)
+    assert.ok(dashboardContent.includes('>Status <i class="sort-arrow"'))
+    assert.ok(dashboardContent.includes('>Response</th>'))
+  })
+
+  it('keeps unavailable models collapsed with the main table columns', () => {
+    assert.match(dashboardContent, /<details class="graveyard-details" id="graveyard-details">/)
+    assert.equal(dashboardContent.includes('id="graveyard-details" open'), false)
+    for (const header of ['Model', 'Intelligence', 'Ping', 'TTFT', 'Tok/s', 'Context', 'Status', 'Response']) {
+      assert.match(dashboardContent, new RegExp(`<th[^>]*>\\s*${header}(?:\\s|<)`), `Missing unavailable column: ${header}`)
+    }
+    assert.ok(dashboardContent.includes('function graveyardRowHTMLInner(g)'))
+    assert.ok(dashboardContent.includes("getBenchmarkTableDisplayValue(s.bestIntellMember.intell"))
+    assert.ok(dashboardContent.includes("formatTtftCell(s.minTtft, 'best')"))
+    assert.ok(dashboardContent.includes("formatTpsCell(s.maxTps, 'best')"))
+    assert.ok(dashboardContent.includes("hasAuth\n            ? responseCellHTML(lastResponse, { rowKey: 'g:' + g.key, members, hasAuth: true })"))
   })
 })
 
@@ -3669,6 +3750,9 @@ describe('context window bounds (known + observed)', () => {
     // A max_tokens cap also reveals a hard limit, even when catalog data exists
     assert.equal(parseContextLimitFromError('`max_tokens` must be less than or equal to `8192`, the maximum value for `max_tokens` is less than the `context_window` for this model'), 8192)
     assert.equal(parseContextLimitFromError('max_tokens must be less than or equal to 4096'), 4096)
+    const vllmLimitError = JSON.stringify({ error: { message: 'max_tokens=16384 cannot be greater than max_model_len=max_total_tokens=8192. Please request fewer output tokens. (parameter=max_tokens, value=16384)', type: 'BadRequestError', param: 'max_tokens', code: 400 } })
+    assert.equal(parseContextLimitFromError(vllmLimitError), 8192)
+    assert.equal(parseMaxTokensCapFromError(vllmLimitError), 8192)
     // A "Request too large ... Limit X, Requested Y" cap reveals the same
     assert.equal(parseContextLimitFromError('Request too large for model `openai/gpt-oss-20b` in organization `org_01krf909wkear9a6bw9d7bxkn8` service tier `on_demand` on tokens per minute (TPM): Limit 8000, Requested 16463, please reduce your message size and try again.'), 8000)
     assert.equal(parseContextLimitFromError('Limit 1,500, Requested 3,000, retry later'), 1500)
@@ -3766,6 +3850,7 @@ describe('context window bounds (known + observed)', () => {
   it('extracts max_tokens caps for test retries', () => {
     assert.equal(parseMaxTokensCapFromError('`max_tokens` must be less than or equal to `8192`, the maximum value for `max_tokens` is less than the `context_window` for this model'), 8192)
     assert.equal(parseMaxTokensCapFromError('max_tokens must be no more than 2048'), 2048)
+    assert.equal(parseMaxTokensCapFromError('max_tokens=16384 cannot be greater than max_model_len=max_total_tokens=8192'), 8192)
     // Other limit errors are not max_tokens caps
     assert.equal(parseMaxTokensCapFromError("This model's maximum context length is 128000 tokens."), null)
     assert.equal(parseMaxTokensCapFromError('some unrelated error'), null)
@@ -3776,6 +3861,7 @@ describe('context window bounds (known + observed)', () => {
     assert.equal(isOverLengthErrorText("This model's maximum context length is 128000 tokens"), true)
     assert.equal(isOverLengthErrorText('prompt is too long'), true)
     assert.equal(isOverLengthErrorText('context_length_exceeded'), true)
+    assert.equal(isOverLengthErrorText('max_tokens=16384 cannot be greater than max_model_len=max_total_tokens=8192'), true)
     assert.equal(isOverLengthErrorText('Invalid API key'), false)
     assert.equal(isOverLengthErrorText(''), false)
   })
