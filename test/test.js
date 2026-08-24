@@ -54,6 +54,7 @@ import {
   parseRetryDelayMs,
   isPaymentRequiredError,
   isDeadModelError,
+  isEmptyModelResponseText,
   isIncompatibleModelError,
   isRateLimitedErrorText,
   shouldKeepUpAfterFailedProbe,
@@ -173,19 +174,17 @@ function encodeKiroEventFrame(eventType, payload) {
 }
 
 describe('config helpers', () => {
-  it('resolves provider-specific ping intervals', () => {
+  it('resolves one global ping interval', () => {
     const config = {
+      pingIntervalMinutes: 5,
       providers: {
-        nvidia: { pingIntervalMinutes: 5 },
-        kilocode: { pingIntervalMinutes: '10' },
-        openrouter: { pingIntervalMinutes: 0 }, // invalid
+        nvidia: { pingIntervalMinutes: 10 },
       }
     }
 
+    assert.equal(getProviderPingIntervalMs(config), 5 * 60_000)
     assert.equal(getProviderPingIntervalMs(config, 'nvidia'), 5 * 60_000)
-    assert.equal(getProviderPingIntervalMs(config, 'kilocode'), 10 * 60_000)
-    assert.equal(getProviderPingIntervalMs(config, 'openrouter'), 30 * 60_000) // default
-    assert.equal(getProviderPingIntervalMs(config, 'missing'), 30 * 60_000) // default
+    assert.equal(getProviderPingIntervalMs({ providers: { nvidia: { pingIntervalMinutes: 10 } } }, 'nvidia'), 30 * 60_000)
     assert.equal(getPinningMode(config), 'canonical')
   })
 
@@ -2496,6 +2495,42 @@ describe('isRetryableProxyStatus', () => {
     assert.equal(isQuotaExhaustionError('bad request', 400), false)
   })
 
+  it('detects Gemini-style quota bodies regardless of transport status', () => {
+    // Google/Gemini native shape, array-wrapped: [{error:{code:429,
+    // status:'RESOURCE_EXHAUSTED', details:[{QuotaFailure},{RetryInfo}]}}]
+    const geminiBody = JSON.stringify([{
+      error: {
+        code: 429,
+        message: 'You exceeded your current quota, please check your plan and billing details.',
+        status: 'RESOURCE_EXHAUSTED',
+        details: [
+          {
+            '@type': 'type.googleapis.com/google.rpc.QuotaFailure',
+            violations: [{
+              quotaMetric: 'generativelanguage.googleapis.com/generate_content_free_tier_requests',
+              quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier',
+              quotaValue: '20',
+            }],
+          },
+          { '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '24s' },
+        ],
+      },
+    }])
+    // A relay can rewrite the transport status; the body is the ground truth.
+    assert.equal(isQuotaExhaustionError(geminiBody, 400), true)
+    assert.equal(isQuotaExhaustionError(geminiBody, 403), true)
+    assert.equal(isQuotaExhaustionError(geminiBody, 500), true)
+    assert.equal(isQuotaExhaustionError(geminiBody, null), true)
+    // QuotaFailure metadata alone (no code/status in the body) still counts.
+    const quotaOnly = JSON.stringify({ error: { message: 'quota gone', details: [{ QuotaFailure: { violations: [{ quotaId: 'x', quotaValue: '1' }] } }] } })
+    assert.equal(isQuotaExhaustionError(quotaOnly, 500), true)
+    // An embedded rpc code 429 without quota keywords also counts.
+    assert.equal(isQuotaExhaustionError(JSON.stringify({ error: { code: 429, message: 'rate limited' } }), 500), true)
+    // Non-quota errors must NOT be classified as quota exhaustion.
+    assert.equal(isQuotaExhaustionError(JSON.stringify({ error: { message: 'bad request', code: 'invalid_request_error' } }), 400), false)
+    assert.equal(isQuotaExhaustionError(JSON.stringify({ error: { message: 'invalid api key' } }), 401), false)
+  })
+
   it('returns true for 429 and 5xx', () => {
     assert.equal(isRetryableProxyStatus(429), true)
     assert.equal(isRetryableProxyStatus('500'), true)
@@ -3143,6 +3178,15 @@ describe('package and entrypoint sanity', () => {
     assert.equal(dashboardContent.includes('>SWE-bench</div>'), false)
   })
 
+  it('removes the main-table filter controls', () => {
+    assert.equal(dashboardContent.includes('toggleFilterBar'), false)
+    assert.equal(dashboardContent.includes('class="filter-bar"'), false)
+    assert.equal(dashboardContent.includes('id="filter-provider-group"'), false)
+    assert.equal(dashboardContent.includes('id="filter-ping-group"'), false)
+    assert.equal(dashboardContent.includes('id="filter-avail-group"'), false)
+    assert.equal(dashboardContent.includes('id="filter-status-group"'), false)
+  })
+
   it('includes the model tag editor and tag-routing guidance', () => {
     assert.ok(dashboardContent.includes('id="model-tags-input"'))
     assert.ok(dashboardContent.includes("fetch('/api/models/tags'"))
@@ -3161,6 +3205,23 @@ describe('package and entrypoint sanity', () => {
     assert.ok(dashboardContent.includes('toggleProviderKeyVisibility'))
     assert.ok(dashboardContent.includes('getConfiguredProviderKey'))
     assert.ok(dashboardContent.includes('copyProviderKey'))
+    assert.equal(dashboardContent.includes('title="Copy API key"'), false)
+    assert.equal(dashboardContent.includes('title="Copy token"'), false)
+    assert.equal(dashboardContent.includes('>Delete Key</button>'), false)
+    assert.equal(dashboardContent.includes('>Delete Token</button>'), false)
+    assert.ok(dashboardContent.includes('id="autoping-interval"'))
+    assert.ok(dashboardContent.includes("const onlineModelCount = groupModels(models.filter(m => m.status === 'up')).length"))
+    assert.ok(dashboardContent.includes("document.getElementById('kpi-active').textContent = onlineModelCount"))
+    assert.ok(dashboardContent.includes("document.getElementById('kpi-providers').textContent = onlineProviders.size"))
+    assert.equal(dashboardContent.includes('Ping interval (min):'), false)
+    assert.equal(dashboardContent.includes('pingIntervalMinutes: providerConfig'), false)
+    assert.ok(dashboardContent.includes('async function addAccountKey(providerKey)'))
+    assert.ok(dashboardContent.includes('title="Get API key"'))
+    assert.ok(dashboardContent.includes('${escapeHtml(p.name)}'))
+    assert.equal(dashboardContent.includes('>Get API key</a>'), false)
+    assert.ok(dashboardContent.includes('async function removeAccountKey(providerKey, index)'))
+    assert.ok(dashboardContent.includes('async function deleteProviderKey(key)'))
+    assert.ok(dashboardContent.includes('await fetchData()'))
   })
 
   it('keeps network plot icons fully opaque', () => {
@@ -3195,7 +3256,28 @@ describe('package and entrypoint sanity', () => {
     assert.ok(serverContent.includes("id: 'smartest'"))
     assert.ok(serverContent.includes('rankModelsForSmartest'))
     assert.ok(serverContent.includes('isQuotaExhaustionError'))
+    assert.ok(dashboardContent.includes('lastResponse?.rateLimitResetAt'))
+    assert.ok(dashboardContent.includes("bodyError?.metadata?.headers?.['X-RateLimit-Reset']"))
+    assert.ok(dashboardContent.includes('bodyRateLimited'))
+    assert.ok(dashboardContent.includes('retry\\s+in\\s+(\\d+(?:\\.\\d+)?)\\s*s'))
+    assert.ok(dashboardContent.includes('const groupStatusHtml = members.length === 1 && getRateLimitResetAt(first) != null'))
+    assert.ok(serverContent.includes('body.rateLimitResetAt = resetAt'))
+    assert.ok(serverContent.includes('response.status === 429 || rateLimitedByText'))
     assert.equal(dashboardContent.includes('auto-fastest'), false)
+    assert.ok(dashboardContent.includes("formatTtftCell(s.minTtft, 'ttft')"))
+    assert.ok(dashboardContent.includes("formatTpsCell(s.maxTps, 'tok/s')"))
+  })
+
+  it('keeps the group Test button for single-provider models', () => {
+    assert.ok(dashboardContent.includes("members.length === 1\n        ? (first.status === 'up' ? 'Up' : 'Down')"))
+    assert.ok(dashboardContent.includes("if (hasAuth) {\n              const expired = lastR && lastR.expiresAt"))
+    assert.ok(dashboardContent.includes("responseCellHTML(lastR, { rowKey: 'g:' + g.key, members: g.members, hasAuth: true, status: first.status })"))
+    assert.ok(dashboardContent.includes("const hideGroupError = isGroupTest && opts.members.length > 1 && lastResponse.error"))
+    assert.ok(dashboardContent.includes('const collapsedModelGroups = new Set()'))
+    assert.ok(dashboardContent.includes('function toggleModelGroup(groupKey)'))
+    assert.ok(dashboardContent.includes("g.members.length > 1 && !collapsedModelGroups.has(g.key)"))
+    assert.ok(dashboardContent.includes("lr.error == null && lr.text != null"))
+    assert.ok(dashboardContent.includes("text: 'Ready', _groupReady: true"))
   })
 
   it('removes the quota column while preserving status and response columns', () => {
@@ -3212,10 +3294,12 @@ describe('package and entrypoint sanity', () => {
       assert.match(dashboardContent, new RegExp(`<th[^>]*>\\s*${header}(?:\\s|<)`), `Missing unavailable column: ${header}`)
     }
     assert.ok(dashboardContent.includes('function graveyardRowHTMLInner(g)'))
+    assert.equal(dashboardContent.includes("filtered = filtered.filter(m => m.status !== 'noauth')"), false)
+    assert.ok(dashboardContent.includes('const noAuthCount = members.filter(m => m.status === \'noauth\').length'))
     assert.ok(dashboardContent.includes("getBenchmarkTableDisplayValue(s.bestIntellMember.intell"))
-    assert.ok(dashboardContent.includes("formatTtftCell(s.minTtft, 'best')"))
-    assert.ok(dashboardContent.includes("formatTpsCell(s.maxTps, 'best')"))
-    assert.ok(dashboardContent.includes("hasAuth\n            ? responseCellHTML(lastResponse, { rowKey: 'g:' + g.key, members, hasAuth: true })"))
+    assert.ok(dashboardContent.includes("formatTtftCell(s.minTtft, 'ttft')"))
+    assert.ok(dashboardContent.includes("formatTpsCell(s.maxTps, 'tok/s')"))
+    assert.ok(dashboardContent.includes("hasAuth\n            ? responseCellHTML(lastResponse, { rowKey: 'g:' + g.key, members, hasAuth: true, status: first.status })"))
   })
 })
 
@@ -3841,6 +3925,9 @@ describe('context window bounds (known + observed)', () => {
     assert.equal(isDeadModelError('models/lyria-realtime-exp is not found for API version v1main, or is not supported for generateContent.', 404), true)
     // NVIDIA NIM: plain 404 page not found for removed models
     assert.equal(isDeadModelError('404 page not found', 404), true)
+    // OpenAI-compatible providers: structured model_not_found errors are permanent
+    // model/access failures even when the provider returns HTTP 400.
+    assert.equal(isDeadModelError('{"message":"Model does not exist or you do not have access to it.","type":"not_found_error","param":"model","code":"model_not_found"}', 400), true)
     // NVIDIA NIM: generic "Model not found" with 404
     assert.equal(isDeadModelError('{"error":{"message":"Model not found","type":"Not Found","code":404}}', 404), true)
     // "Model not found" without 404 is not treated as dead (could be transient)
@@ -3852,6 +3939,14 @@ describe('context window bounds (known + observed)', () => {
     assert.equal(isDeadModelError(null, 200), false)
   })
 
+  it('treats empty successful test responses as incompatible', () => {
+    assert.equal(isEmptyModelResponseText(null), true)
+    assert.equal(isEmptyModelResponseText(''), true)
+    assert.equal(isEmptyModelResponseText('   \n\t  '), true)
+    assert.equal(isEmptyModelResponseText('Ready'), false)
+    assert.equal(isEmptyModelResponseText('  Ready  '), false)
+  })
+
   it('detects incompatible model errors (text-input rejected)', () => {
     assert.equal(isIncompatibleModelError('Content cannot be a plain string. The model does not support text input.', 400), true)
     assert.equal(isIncompatibleModelError('{"object":"error","message":"Content cannot be a plain string. The model does not support text input. Content cannot be a plain string. The model does not support text input.","type":"BadRequestError"}', 400), true)
@@ -3861,6 +3956,16 @@ describe('context window bounds (known + observed)', () => {
     assert.equal(isIncompatibleModelError('Rate limit exceeded', 429), false)
     assert.equal(isIncompatibleModelError('Payment required', 402), false)
     assert.equal(isIncompatibleModelError(null, 400), false)
+    // OpenRouter agentic-harness-only gate: free models like inkling-small:free reject
+    // every plain-API request with HTTP 403. This is a permanent provider policy (the
+    // free endpoint isn't callable from a non-agentic client), not an auth/transient error,
+    // so it must surface as Incompatible in the unavailable table.
+    const agenticMsg = 'thinkingmachines/inkling-small:free is only available on agentic harnesses. Try plugging it into a coding agent or productivity app listed on https://openrouter.ai/apps'
+    assert.equal(isIncompatibleModelError(agenticMsg, 403), true)
+    // Text match wins even without the 403 status (defensive — relay could rewrite status)
+    assert.equal(isIncompatibleModelError(agenticMsg, 400), true)
+    // A plain unrelated 403 stays classified as a generic error, not incompatible
+    assert.equal(isIncompatibleModelError('invalid API key', 403), false)
   })
 
   it('detects rate-limit errors delivered outside an HTTP 429', () => {

@@ -299,6 +299,18 @@
     .topo-model-img { opacity: 1; transition: all 1.5s ease-in-out; pointer-events: all; cursor: default; }
     .topo-model-img.best { opacity: 1; }
 
+    /* Monogram fallback behind every model favicon — guarantees a branded
+       glyph (first letter of the display name) is visible even when no
+       favicon domain resolves or the remote image fails to load. */
+    .topo-model-mono { fill: var(--surface-alt); stroke: var(--text-muted); stroke-width: 0.4; transition: all 1.5s ease-in-out; pointer-events: all; cursor: default; }
+    .topo-model-mono.up { stroke: var(--success); }
+    .topo-model-mono.down { stroke: var(--error); }
+    .topo-model-mono.best { stroke: var(--accent); }
+    .topo-model-glyph { fill: var(--text-muted); font-size: 4.5px; font-weight: 700; font-family: system-ui, -apple-system, sans-serif; text-anchor: middle; dominant-baseline: middle; opacity: 0.55; transition: all 1.5s ease-in-out; pointer-events: none; }
+    .topo-model-glyph.up { fill: var(--success); opacity: 0.7; }
+    .topo-model-glyph.down { fill: var(--error); opacity: 0.6; }
+    .topo-model-glyph.best { fill: var(--accent); opacity: 0.85; }
+
     .topo-model-label { fill: var(--text-muted); font-size: 2.5px; font-family: system-ui, -apple-system, sans-serif; text-anchor: middle; opacity: 0.3; transition: all 1.5s ease-in-out; pointer-events: none; }
     .topo-model-label.up { fill: var(--success); opacity: 0.55; }
     .topo-model-label.down { fill: var(--error); opacity: 0.35; }
@@ -309,6 +321,8 @@
        cx/cy/x/y, which is the main source of animation jank. Re-enabled on settle. */
     #bg-topology-svg.topo-animating .topo-model,
     #bg-topology-svg.topo-animating .topo-model-img,
+    #bg-topology-svg.topo-animating .topo-model-mono,
+    #bg-topology-svg.topo-animating .topo-model-glyph,
     #bg-topology-svg.topo-animating .topo-model-label,
     #bg-topology-svg.topo-animating .topo-provider-ring,
     #bg-topology-svg.topo-animating .topo-provider-img,
@@ -319,7 +333,7 @@
     }
 
     /* Highlight modes: when a provider is focused, dim everything else */
-    .topo-model.dimmed, .topo-model-img.dimmed, .topo-model-label.dimmed, .topo-provider-ring.dimmed, .topo-provider-img.dimmed, .topo-provider-mono.dimmed, .topo-link.dimmed, .topo-provider-label.dimmed {
+    .topo-model.dimmed, .topo-model-img.dimmed, .topo-model-mono.dimmed, .topo-model-glyph.dimmed, .topo-model-label.dimmed, .topo-provider-ring.dimmed, .topo-provider-img.dimmed, .topo-provider-mono.dimmed, .topo-link.dimmed, .topo-provider-label.dimmed {
       opacity: 0.05 !important;
       filter: none !important;
     }
@@ -908,93 +922,6 @@
       white-space: nowrap;
     }
 
-    /* Filter Bar */
-    .filter-bar {
-      display: none;
-      gap: 16px;
-      padding: 12px 24px;
-      background: var(--chat-bg);
-      border-bottom: 1px solid var(--border);
-      flex-wrap: wrap;
-    }
-
-    .filter-bar.visible {
-      display: flex;
-    }
-
-    .filter-group {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      padding-right: 16px;
-      border-right: 1px solid var(--border);
-    }
-
-    .filter-group:last-child {
-      border-right: none;
-      padding-right: 0;
-    }
-
-    .filter-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      width: 100%;
-      min-width: 120px;
-    }
-
-    .filter-label {
-      font-size: 0.75rem;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .filter-shortcut {
-      font-size: 0.65rem;
-      color: var(--accent);
-      cursor: pointer;
-      user-select: none;
-    }
-
-    .filter-shortcut:hover {
-      text-decoration: underline;
-    }
-
-    .checkbox-group {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      max-height: 180px;
-      overflow-y: auto;
-      padding-right: 4px;
-    }
-
-    .checkbox-group::-webkit-scrollbar {
-      width: 4px;
-    }
-
-    .checkbox-group::-webkit-scrollbar-thumb {
-      background: var(--border);
-      border-radius: 4px;
-    }
-
-    .cb-label {
-      font-size: 0.75rem;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      color: var(--text);
-      cursor: pointer;
-      white-space: nowrap;
-    }
-
-    .cb-label input {
-      margin: 0;
-      cursor: pointer;
-    }
-
     th.sortable:hover {
       color: var(--text);
     }
@@ -1161,51 +1088,6 @@
       border-color: var(--tier-c-border);
     }
 
-    .ping-dot {
-      display: inline-block;
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      vertical-align: middle;
-      margin-right: 6px;
-      position: relative;
-    }
-
-    .ping-dot.anim-fast {
-      background: var(--success);
-    }
-
-    .ping-dot.anim-medium {
-      background: var(--warning);
-    }
-
-    .ping-dot.anim-slow {
-      background: var(--error);
-    }
-
-    .ping-dot.active::after {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      border-radius: 50%;
-      background: inherit;
-      animation: ping-pulse var(--speed, 3s) ease-out infinite;
-    }
-
-    @keyframes ping-pulse {
-      0% {
-        transform: scale(1);
-        opacity: 0.45;
-      }
-
-      100% {
-        transform: scale(2.5);
-        opacity: 0;
-      }
-    }
 
     /* Switch Component */
     .switch {
@@ -1292,6 +1174,30 @@
     .form-group input[type="password"]:focus {
       background: var(--input-bg);
       border-color: var(--accent);
+    }
+
+    .providers-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .providers-grid > .provider-section {
+      margin: 0;
+      min-width: 0;
+      border-bottom: 0;
+    }
+
+    @media (max-width: 920px) {
+      .providers-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 640px) {
+      .providers-grid {
+        grid-template-columns: 1fr;
+      }
     }
 
     .autoupdate-panel {
@@ -1866,7 +1772,6 @@
         <p class="dashboard-subtitle">Live model telemetry, provider health, and routing controls in one place.
         </p>
         <p style="margin: 8px 0 0; color: var(--text-muted); font-size: 0.78rem; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-          <span>Version <span id="dashboard-version">Loading...</span></span>
           <span id="update-pill" style="display:none;"></span>
           <button id="theme-toggle" onclick="toggleTheme()" title="Toggle dark mode" style="background: var(--surface-alt); border: 1px solid var(--border); cursor: pointer; padding: 4px 8px; border-radius: 6px; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 4px; color: var(--text);">
             <span id="theme-icon">🌙</span>
@@ -1933,15 +1838,6 @@
               placeholder="Search models, providers, or tiers..." oninput="handleSearch()">
           </div>
           <div style="display:flex; align-items:center; gap:20px; flex-shrink: 0;">
-            <button onclick="toggleFilterBar()"
-              style="display:flex; align-items:center; gap:6px; border:1px solid var(--border); background:var(--input-bg); cursor:pointer; font-size:0.8rem; color:var(--text); padding:6px 12px; border-radius:6px; transition:all 0.15s; font-weight:500;"
-              onmouseover="this.style.background='var(--surface-alt)'" onmouseout="this.style.background='var(--input-bg)'">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
-              </svg>
-              Filters
-            </button>
             <div style="display:flex; align-items:center; gap:10px;">
               <div id="hover-pause-badge"
                 style="display:none; background:var(--warning); color:#1a0a00; padding:4px 8px; border-radius:6px; font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; align-items:center; gap:4px;"
@@ -1962,65 +1858,6 @@
           </div>
         </div>
 
-        <div class="filter-bar">
-
-
-          <div class="filter-group">
-            <div class="filter-header">
-              <span class="filter-label">Provider</span>
-              <span class="filter-shortcut" onclick="toggleAll('filter-provider-group')">(All/None)</span>
-            </div>
-            <div class="checkbox-group" id="filter-provider-group">
-              <!-- Populated dynamically -->
-            </div>
-          </div>
-
-          <div class="filter-group">
-            <div class="filter-header">
-              <span class="filter-label">Ping</span>
-              <span class="filter-shortcut" onclick="toggleAll('filter-ping-group')">(All/None)</span>
-            </div>
-            <div class="checkbox-group" id="filter-ping-group">
-              <label class="cb-label"><input type="checkbox" value="fast" checked onchange="render(true)"> Fast
-                (&lt;400ms)</label>
-              <label class="cb-label"><input type="checkbox" value="medium" checked onchange="render(true)"> Medium
-                (400-1199ms)</label>
-              <label class="cb-label"><input type="checkbox" value="slow" checked onchange="render(true)"> Slow
-                (&ge;1200ms)</label>
-            </div>
-          </div>
-
-          <div class="filter-group">
-            <div class="filter-header">
-              <span class="filter-label">Availability</span>
-              <span class="filter-shortcut" onclick="toggleAll('filter-avail-group')">(All/None)</span>
-            </div>
-            <div class="checkbox-group" id="filter-avail-group">
-              <label class="cb-label"><input type="checkbox" value="excellent" checked onchange="render(true)">
-                Excellent (&ge;95%)</label>
-              <label class="cb-label"><input type="checkbox" value="good" checked onchange="render(true)"> Good
-                (85-94%)</label>
-              <label class="cb-label"><input type="checkbox" value="poor" checked onchange="render(true)"> Poor
-                (&lt;85%)</label>
-            </div>
-          </div>
-
-          <div class="filter-group">
-            <div class="filter-header">
-              <span class="filter-label">Status</span>
-              <span class="filter-shortcut" onclick="toggleAll('filter-status-group')">(All/None)</span>
-            </div>
-            <div class="checkbox-group" id="filter-status-group">
-              <label class="cb-label"><input type="checkbox" value="up" checked onchange="render(true)"> Up</label>
-              <label class="cb-label"><input type="checkbox" value="down" checked onchange="render(true)"> Down</label>
-              <label class="cb-label"><input type="checkbox" value="disabled" checked onchange="render(true)">
-                Disabled</label>
-              <label class="cb-label"><input type="checkbox" value="excluded" checked onchange="render(true)">
-                Excluded</label>
-              <label class="cb-label"><input type="checkbox" value="dead" checked onchange="render(true)"> Dead</label>
-            </div>
-          </div>
-        </div>
 
         <div class="table-wrap">
         <table onmouseenter="isTableHovered=true; document.getElementById('hover-pause-badge').style.display='flex';"
@@ -2072,11 +1909,25 @@
           </div>
         </details>
       </div>
+      <div id="providers-panel" style="margin-top: 24px;">
+        <h2 style="margin: 0 0 0.35rem; font-size: 1.25rem;">Providers</h2>
+        <p style="color: var(--text-muted); margin: 0 0 1.25rem; font-size: 0.875rem;">Configure API keys to enable models from different providers.</p>
+        <div style="margin-bottom: 1rem;">
+          <button id="refresh-all-btn" onclick="refreshAllProviders()" style="border: 1px solid var(--border); background: var(--input-bg); color: var(--text); cursor: pointer; padding: 8px 16px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"></path><polyline points="21 3 21 9 15 9"></polyline></svg>
+            Refresh All Providers
+          </button>
+          <span id="refresh-all-status" style="margin-left: 10px; font-size: 0.78rem; color: var(--text-muted);"></span>
+        </div>
+        <div id="providers-container" class="providers-grid">
+          <!-- Provider cards generated here -->
+        </div>
+      </div>
     </div>
 
     <div id="settings-view" style="display: none;">
       <h2 style="margin-top: 0; font-size: 1.25rem;">Settings</h2>
-      <p style="color: var(--text-muted); margin-bottom: 1.25rem; font-size: 0.875rem;">Manage router update behavior and provider credentials.</p>
+      <p style="color: var(--text-muted); margin-bottom: 1.25rem; font-size: 0.875rem;">Manage router update behavior and routing preferences.</p>
       <div id="autoupdate-container" class="provider-section">
         <!-- Auto-update settings generated here -->
       </div>
@@ -2099,18 +1950,6 @@
       <p style="color: var(--text-muted); margin: 0 0 1.25rem; font-size: 0.84rem;">Exclude models from pinging and routing based on criteria.</p>
       <div id="filter-rules-container">
         <!-- Filter rules UI generated here -->
-      </div>
-      <h3 style="margin: 2rem 0 0.25rem; font-size: 1rem;">Providers</h3>
-      <p style="color: var(--text-muted); margin: 0 0 1.25rem; font-size: 0.84rem;">Configure API keys to enable models from different providers.</p>
-      <div style="margin-bottom: 1rem;">
-        <button id="refresh-all-btn" onclick="refreshAllProviders()" style="border: 1px solid var(--border); background: var(--input-bg); color: var(--text); cursor: pointer; padding: 8px 16px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"></path><polyline points="21 3 21 9 15 9"></polyline></svg>
-          Refresh All Providers
-        </button>
-        <span id="refresh-all-status" style="margin-left: 10px; font-size: 0.78rem; color: var(--text-muted);"></span>
-      </div>
-      <div id="providers-container" class="autoupdate-panel">
-        <!-- Settings generated here -->
       </div>
       <h3 style="margin: 2rem 0 0.25rem; font-size: 1rem;">Configuration Transfer</h3>
       <p style="color: var(--text-muted); margin: 0 0 1.25rem; font-size: 0.84rem;">Export/import all settings (including API keys) as a single encoded token for copy/paste migration.</p>
@@ -2403,6 +2242,12 @@
     const MODEL_ID_ALIASES = {
       'mimo-v2-omni-free': 'xiaomi/mimo-v2-omni:free',
     };
+    const PROVIDER_NAMES = {
+      'groq': 'Groq', 'googleai': 'Google', 'cerebras': 'Cerebras',
+      'nvidia': 'NVIDIA', 'openrouter': 'OpenRouter', 'codestral': 'Codestral',
+      'scaleway': 'Scaleway', 'kilocode': 'KiloCode', 'opencode': 'OpenCode',
+      'ollama': 'Ollama', 'kiro': 'Kiro',
+    };
 
 
 
@@ -2473,9 +2318,6 @@
         setActivePinnedModel(data.pinnedModelId, data.pinnedProviderKey, data.pinnedRowKeys, data.pinningMode);
         updateChatModelOptions(allModels);
 
-        // Populate Provider Checkboxes
-        renderProviderFilterGroup(providers);
-
         render(); // triggers automatic (non-user) layout pass
         updateKPIs(allModels, data.best);
         if (openDrawerModelId) {
@@ -2486,8 +2328,9 @@
         if (document.getElementById('logs-view').style.display !== 'none') {
           loadLogs();
         }
-        // Live-update providers if that tab is currently active
-        if (document.getElementById('settings-view').style.display !== 'none') {
+        // Keep provider controls current while visible on the main page or in settings.
+        if (document.getElementById('models-view').style.display !== 'none'
+          || document.getElementById('settings-view').style.display !== 'none') {
           loadSettings();
         }
         return true;
@@ -2503,15 +2346,7 @@
         if (!res.ok) throw new Error('meta fetch failed');
         const meta = await res.json();
         if (!meta || !meta.version || meta.version === 'unknown') throw new Error('meta missing version');
-        const versionEl = document.getElementById('dashboard-version');
         const pillEl = document.getElementById('update-pill');
-        versionEl.textContent = `v${meta.version}`;
-
-        if (meta.autoUpdate) {
-          const interval = Number(meta.autoUpdate.intervalHours) > 0 ? Number(meta.autoUpdate.intervalHours) : 24;
-          const state = meta.autoUpdate.enabled === false ? 'off' : 'on';
-          versionEl.title = `Auto-update: ${state} (${interval}h)`;
-        }
 
         if (pillEl) {
           if (meta.updateAvailable && meta.latestVersion) {
@@ -2525,8 +2360,6 @@
 
         metaLoaded = true;
       } catch {
-        const target = document.getElementById('dashboard-version');
-        if (target) target.textContent = 'Loading...';
         setTimeout(() => {
           if (!metaLoaded) loadMeta();
         }, 5000);
@@ -2704,9 +2537,10 @@
     }
 
     function updateKPIs(models, bestModelId) {
-      const upModels = models.filter(m => m.status === 'up');
+      // Count unique model groups, not provider rows, so shared models are only
+      // counted once even when multiple providers host them.
+      const onlineModelCount = groupModels(models.filter(m => m.status === 'up')).length;
 
-      const allProviders = new Set(models.map(m => m.providerKey));
       const onlineProviders = new Set();
       models.forEach(m => {
         if (m.status === 'up' && !m.isRateLimited) {
@@ -2714,8 +2548,8 @@
         }
       });
 
-      document.getElementById('kpi-active').textContent = upModels.length;
-      document.getElementById('kpi-providers').textContent = allProviders.size;
+      document.getElementById('kpi-active').textContent = onlineModelCount;
+      document.getElementById('kpi-providers').textContent = onlineProviders.size;
 
       const bestModel = bestModelId ? models.find(m => m.modelId === bestModelId) : null;
       document.getElementById('kpi-best').textContent = bestModel ? bestModel.label : 'None Online';
@@ -2764,21 +2598,39 @@
       }));
       const numModels = uniqueModels.length;
 
-      // Model-family → favicon domain (model's own brand, not the provider hosting it)
+      // Model-family → favicon domain (model's own brand, not the provider hosting it).
+      // Matched by prefix (raw.includes(prefix)); first matching key wins, so overlapping
+      // prefixes are ordered to prefer the more specific brand. Covers every model family
+      // defined across sources.js / tags.js so the plot can resolve a brand icon for each.
       const MODEL_DOMAINS = {
-        'deepseek': 'deepseek.com', 'gemma': 'ai.google.dev', 'qwen': 'qwen.ai',
-        'llama': 'meta.com', 'mistral': 'mistral.ai', 'ministral': 'mistral.ai',
-        'codestral': 'mistral.ai', 'nemotron': 'nvidia.com', 'gpt-oss': 'openai.com',
-        'glm': 'chatglm.cn', 'minimax': 'minimax.chat', 'moonshot': 'moonshot.ai',
-        'kimi': 'moonshot.ai', 'glm': 'chatglm.cn', 'trinity': 'arcee.ai',
-        'laguna': 'poolside.ai', 'step': 'stepfun.com', 'dola': 'seed.com',
-        'hy3': 'hygen.ai', 'ring': 'inclusioncloud.com', 'ling': 'inclusioncloud.com',
-        'mimo': 'xiaomi.com', 'devstral': 'mistral.ai', 'cogito': 'deepinfra.com',
-        'glm': 'zhipuai.cn', 'kimi-k2': 'moonshot.ai', 'bytedance': 'bytedance.com',
-        'dola-seed': 'bytedance.com', 'inclusionai': 'inclusioncloud.com',
-        'openai': 'openai.com', 'xai': 'x.ai', 'phi': 'microsoft.com',
-        'command': 'cohere.com', 'north': 'cohere.com', 'aria': 'ai21.com',
+        // --- Chinese open-weight labs ---
+        'deepseek': 'deepseek.com', 'deepseek-ai': 'deepseek.com', 'deepseek-v3': 'deepseek.com', 'deepseek-v4': 'deepseek.com',
+        'qwen': 'qwen.ai', 'qwen3': 'qwen.ai', 'qwen3.5': 'qwen.ai', 'qwen3-vl': 'qwen.ai', 'qwen3-coder': 'qwen.ai', 'qwen3-next': 'qwen.ai',
+        'glm': 'zhipuai.cn', 'z-ai': 'zhipuai.cn', 'zai': 'zhipuai.cn',
+        'moonshot': 'moonshot.ai', 'kimi': 'moonshot.ai', 'kimi-k2': 'moonshot.ai', 'kimi-k3': 'moonshot.ai',
+        'minimax': 'minimax.chat', 'minimaxai': 'minimax.chat',
+        'step': 'stepfun.com', 'stepfun': 'stepfun.com', 'stepfun-ai': 'stepfun.com',
+        'mimo': 'xiaomi.com', 'xiaomi': 'xiaomi.com',
+        'inclusionai': 'inclusioncloud.com', 'ling': 'inclusioncloud.com', 'ring': 'inclusioncloud.com',
+        'bytedance': 'bytedance.com', 'bytedance-seed': 'bytedance.com', 'dola-seed': 'bytedance.com',
+        'hy3': 'hunyuan.cloud.tencent.com', 'tencent': 'hunyuan.cloud.tencent.com',
+        'cogito': 'deepinfra.com',
+        // --- Western labs / providers ---
+        'gemma': 'ai.google.dev', 'google': 'ai.google.dev',
+        'llama': 'meta.com', 'meta': 'meta.com',
+        'nemotron': 'nvidia.com', 'nvidia': 'nvidia.com',
+        'gpt-oss': 'openai.com', 'openai': 'openai.com',
+        'mistral': 'mistral.ai', 'ministral': 'mistral.ai', 'codestral': 'mistral.ai', 'devstral': 'mistral.ai', 'mistral-large': 'mistral.ai', 'mistral-medium': 'mistral.ai',
+        'grok': 'x.ai', 'x-ai': 'x.ai',
+        'phi': 'microsoft.com',
+        'command': 'cohere.com', 'north': 'cohere.com', 'cohere': 'cohere.com',
+        'aria': 'ai21.com',
         'amazon': 'aws.amazon.com', 'nova': 'aws.amazon.com',
+        'trinity': 'arcee.ai', 'arcee': 'arcee.ai',
+        'laguna': 'poolside.ai', 'poolside': 'poolside.ai',
+        'granite': 'ibm.com', 'ibm': 'ibm.com',
+        'stockmark': 'stockmark.com',
+        'igenius': 'igenius.ai',
       };
       function getModelDomain(m) {
         const raw = (m.modelId || m.label || '').toLowerCase();
@@ -2794,12 +2646,6 @@
         'nvidia': 'nvidia.com', 'openrouter': 'openrouter.ai', 'codestral': 'mistral.ai',
         'scaleway': 'scaleway.com', 'kilocode': 'kilocode.com', 'opencode': 'opencode.ai',
         'ollama': 'ollama.com', 'kiro': 'kiro.dev',
-      };
-      const PROVIDER_NAMES = {
-        'groq': 'Groq', 'googleai': 'Google', 'cerebras': 'Cerebras',
-        'nvidia': 'NVIDIA', 'openrouter': 'OpenRouter', 'codestral': 'Codestral',
-        'scaleway': 'Scaleway', 'kilocode': 'KiloCode', 'opencode': 'OpenCode',
-        'ollama': 'Ollama', 'kiro': 'Kiro',
       };
 
       // Fit the viewBox to the card's actual pixel size.
@@ -2938,7 +2784,33 @@
           title.textContent = `${modelDisplayName(m)} · ${node.providers.map(p => PROVIDER_NAMES[p] || p).join(', ')}`;
           el.appendChild(title);
           g.appendChild(el);
-          // 2. Model-specific favicon (the model's own brand icon)
+          // 2. Monogram disc + letter — always drawn so every model node shows a
+          // branded glyph even when no favicon domain resolves (or the remote
+          // request fails). The favicon image below sits on top and, on a
+          // successful load, covers the monogram; on error it hides and the
+          // monogram remains, exactly like the provider nodes.
+          const monogram = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          monogram.setAttribute('cx', px); monogram.setAttribute('cy', py); monogram.setAttribute('r', 4.5);
+          monogram.setAttribute('class', 'topo-model-mono');
+          monogram.dataset.midx = ni; monogram.dataset.uidx = node.umIdx;
+          monogram.dataset.pkeys = node.providers.join('|');
+          const monoTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+          monoTitle.textContent = modelDisplayName(m);
+          monogram.appendChild(monoTitle);
+          g.appendChild(monogram);
+
+          const shortName = modelDisplayName(m);
+          const glyphText = (shortName.match(/[a-z0-9]/i) || ['?'])[0].toUpperCase();
+          const glyph = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          glyph.setAttribute('x', px); glyph.setAttribute('y', py);
+          glyph.setAttribute('class', 'topo-model-glyph');
+          glyph.dataset.midx = ni; glyph.dataset.uidx = node.umIdx;
+          glyph.textContent = glyphText;
+          g.appendChild(glyph);
+
+          // 3. Model-specific favicon (the model's own brand icon), overlaid on
+          // the monogram. Only attempted when a domain resolved; an error hides
+          // the (failed) remote image so the monogram shows through.
           const modelDom = getModelDomain(m);
           if (modelDom) {
             const mcId = `mclip-${ni}`;
@@ -2952,18 +2824,21 @@
             const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
             img.setAttribute('x', (node.x - 4).toFixed(1)); img.setAttribute('y', (node.y - 4).toFixed(1));
             img.setAttribute('width', '8'); img.setAttribute('height', '8');
-            img.setAttribute('href', `https://www.google.com/s2/favicons?domain=${modelDom}&sz=32`);
+            img.setAttribute('href', `https://www.google.com/s2/favicons?domain=${modelDom}&sz=64`);
             img.setAttribute('clip-path', `url(#${mcId})`);
             img.setAttribute('class', 'topo-model-img');
             img.dataset.midx = ni; img.dataset.uidx = node.umIdx;
             img.dataset.pkeys = node.providers.join('|');
+            // A blocked/blank favicon must not erase the node: hide it so the
+            // monogram beneath stays visible. (Google's service returns a generic
+            // default for unknown domains; those are filtered out here too.)
+            img.addEventListener('error', () => { img.style.display = 'none'; });
             const imgTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
             imgTitle.textContent = modelDisplayName(m);
             img.appendChild(imgTitle);
             g.appendChild(img);
           }
-          // 3. Tiny name label below (use display name)
-          const shortName = modelDisplayName(m);
+          // 4. Tiny name label below (use display name)
           const trunc = shortName.length > 12 ? shortName.slice(0, 11) + '…' : shortName;
           if (trunc) {
             const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
@@ -3119,7 +2994,7 @@
         }
       });
 
-      // Refresh model favicon images
+      // Refresh model favicon images (and their monogram/glyph fallbacks)
       gLayer.querySelectorAll('.topo-model-img').forEach(el => {
         const mi = Number(el.dataset.uidx || 0);
         if (mi >= 0 && mi < numModels) {
@@ -3130,6 +3005,17 @@
           if (el.getAttribute('class') !== cls) el.setAttribute('class', cls);
           const title = el.querySelector('title');
           if (title) title.textContent = modelDisplayName(um);
+        }
+      });
+      // Monogram + glyph always reflect the model's current health colour
+      gLayer.querySelectorAll('.topo-model-mono, .topo-model-glyph').forEach(el => {
+        const mi = Number(el.dataset.uidx || 0);
+        if (mi >= 0 && mi < numModels) {
+          const um = uniqueModels[mi];
+          if (!um) return;
+          const isBest = isModelBest(um);
+          const cls = `topo-${el.classList.contains('topo-model-mono') ? 'model-mono' : 'model-glyph'}${modelStatusCls(um, isBest)}`;
+          if (el.getAttribute('class') !== cls) el.setAttribute('class', cls);
         }
       });
 
@@ -3348,6 +3234,14 @@
         const mi = Number(el.dataset.midx);
         if (mi >= 0 && mi < N) elMap[mi].img = el;
       });
+      g.querySelectorAll('.topo-model-mono').forEach(el => {
+        const mi = Number(el.dataset.midx);
+        if (mi >= 0 && mi < N) elMap[mi].mono = el;
+      });
+      g.querySelectorAll('.topo-model-glyph').forEach(el => {
+        const mi = Number(el.dataset.midx);
+        if (mi >= 0 && mi < N) elMap[mi].glyph = el;
+      });
       g.querySelectorAll('.topo-model-label').forEach(el => {
         const mi = Number(el.dataset.midx);
         if (mi >= 0 && mi < N) elMap[mi].label = el;
@@ -3482,6 +3376,8 @@
           const els = elMap[i];
           if (els.circle) { els.circle.setAttribute('cx', px); els.circle.setAttribute('cy', py); }
           if (els.img) { els.img.setAttribute('x', (n.x - 4).toFixed(1)); els.img.setAttribute('y', (n.y - 4).toFixed(1)); }
+          if (els.mono) { els.mono.setAttribute('cx', px); els.mono.setAttribute('cy', py); }
+          if (els.glyph) { els.glyph.setAttribute('x', px); els.glyph.setAttribute('y', py); }
           if (els.label) { els.label.setAttribute('x', px); els.label.setAttribute('y', (n.y + 9).toFixed(1)); }
           if (els.ring) { els.ring.setAttribute('cx', px); els.ring.setAttribute('cy', py); }
           if (els.img && els.img.classList.contains('topo-provider-img')) {
@@ -3581,20 +3477,6 @@
         render(true);
         console.error('Failed to pin model', e);
       }
-    }
-
-    function toggleFilterBar() {
-      const bar = document.querySelector('.filter-bar');
-      bar.classList.toggle('visible');
-    }
-
-    function toggleAll(groupId) {
-      const group = document.getElementById(groupId);
-      const checkboxes = group.querySelectorAll('input[type="checkbox"]');
-      const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-
-      checkboxes.forEach(cb => cb.checked = !allChecked);
-      render(true);
     }
 
     function handleSearch() {
@@ -3825,12 +3707,31 @@
         });
     }
 
-    // Flattens sorted groups into heading rows followed by their provider rows
+    // Flattens sorted groups into heading rows followed by their provider rows.
+    // A single-provider model needs no redundant provider sub-row: show that
+    // provider in the heading and keep the model to one compact row.
+    const collapsedModelGroups = new Set();
+    let modelGroupsInitialized = false;
+
+    function toggleModelGroup(groupKey) {
+      if (collapsedModelGroups.has(groupKey)) collapsedModelGroups.delete(groupKey);
+      else collapsedModelGroups.add(groupKey);
+      render(true);
+    }
+
     function buildExpanded(groups) {
+      if (!modelGroupsInitialized) {
+        for (const g of groups) {
+          if (g.members.length > 1) collapsedModelGroups.add(g.key);
+        }
+        modelGroupsInitialized = true;
+      }
       const expanded = [];
       for (const g of groups) {
         expanded.push({ type: 'group', key: g.key, label: g.label, canonicalId: g.canonicalId, members: g.members });
-        for (const m of g.members) expanded.push({ type: 'row', m });
+        if (g.members.length > 1 && !collapsedModelGroups.has(g.key)) {
+          for (const m of g.members) expanded.push({ type: 'row', m });
+        }
       }
       return expanded;
     }
@@ -3868,22 +3769,27 @@
       const fastest = s.fastest;
       const hasPing = fastest !== null && fastest !== Infinity;
       const statusColor = s.upCount === 0 ? 'var(--error)' : (s.upCount === members.length ? 'var(--success)' : 'var(--warning)');
-      const statusText = s.upCount === members.length ? 'All Up' : `${s.upCount}/${members.length} Up`;
+      const statusText = members.length === 1
+        ? (first.status === 'up' ? 'Up' : 'Down')
+        : (s.upCount === members.length ? 'All Up' : `${s.upCount}/${members.length} Up`);
+      const groupStatusHtml = members.length === 1 && getRateLimitResetAt(first) != null
+        ? statusCellHTML(first)
+        : `<div style="display: flex; align-items: center; gap: 6px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: ${statusColor}"></span><span style="font-size: 0.75rem; font-weight: 500;">${statusText}</span></div>`;
       const emoji = first.status === 'banned' ? '🚫 ' : (first.status === 'excluded' ? '⛔ ' : '');
 
       return `
           <td style="cursor:pointer;" onclick='openDrawer(${JSON.stringify(first).replace(/'/g, "&apos;")})'>
             <div style="font-weight: 700; font-size: 0.92rem; display:flex; align-items:center; gap:8px;">
               <span title="${escapeHtml(cleanHeadingModelName(g.label))}">${emoji}${escapeHtml(cleanHeadingModelName(g.label))}</span>
+              ${members.length > 1 ? `<button type="button" onclick="event.stopPropagation(); toggleModelGroup('${escapeAttr(g.key)}')" title="${collapsedModelGroups.has(g.key) ? 'Expand' : 'Collapse'} providers" style="border:0; background:transparent; color:var(--text-muted); cursor:pointer; padding:0 3px; font-size:0.85rem;">${collapsedModelGroups.has(g.key) ? '▶' : '▼'}</button>` : ''}
               <span class="pin-row-btn ${isPinned ? 'pinned' : ''}" onclick="event.stopPropagation(); pinModel('${isPinned ? '' : first.modelId}', '')" title="${isPinned ? 'Unpin model' : 'Pin model'}">📌</span>
             </div>
-            <div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(g.canonicalId)} • ${members.length} provider${members.length > 1 ? 's' : ''}</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">${members.length === 1 ? escapeHtml(PROVIDER_NAMES[members[0].providerKey] || members[0].providerKey) : `${escapeHtml(g.canonicalId)} • ${members.length} providers`}</div>
             <div class="model-tag-row">${renderModelTagChips(first.tags)}</div>
           </td>
           <td><div style="font-weight: 600;">${getBenchmarkTableDisplayValue(s.bestIntellMember.intell, s.bestIntellMember.qualitySource, s.bestIntellMember.qualityDetail, s.bestIntellMember.elo)}</div></td>
           <td class="text-right">
             <div style="display: flex; align-items: center; gap: 8px; justify-content: flex-end;">
-              <div class="ping-dot ${hasPing ? 'active ' + getPingAnimClass(fastest) : ''}" style="--speed: ${getPingSpeed(fastest)}"></div>
               <div style="font-variant-numeric: tabular-nums; text-align:right; line-height:1.3;">
                 ${hasPing
           ? `<div style="font-size:0.82rem;">${fastest}ms</div><div style="font-size:0.7rem; color:var(--text-muted);">${s.bestUptime}%</div>`
@@ -3891,19 +3797,21 @@
               </div>
             </div>
           </td>
-          ${formatTtftCell(s.minTtft, 'best')}
-          ${formatTpsCell(s.maxTps, 'best')}
+          ${formatTtftCell(s.minTtft, 'ttft')}
+          ${formatTpsCell(s.maxTps, 'tok/s')}
           <td>
             <div style="font-weight: 600; font-variant-numeric: tabular-nums;" title="${s.bestCtxMember && s.bestCtxMember.contextSource === 'observed' ? 'Bounds inferred from real requests' : (s.bestCtxMember && s.bestCtxMember.context ? 'Known context window' : 'Largest context window among providers')}">${s.bestCtxMember && s.bestCtxMember.context ? escapeHtml(s.bestCtxMember.context) : '<span style="font-size:0.75rem;color:var(--text-muted);">—</span>'}</div>
           </td>
-          <td><div style="display: flex; align-items: center; gap: 6px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: ${statusColor}"></span><span style="font-size: 0.75rem; font-weight: 500;">${statusText}</span></div></td>
+          <td>${groupStatusHtml}</td>
           <td>${(() => {
             // Group response: the most recent successful test across the group's providers
             const lastR = groupLastResponse(g);
             const hasAuth = g.members.some(m => m.status !== 'noauth');
-            if (hasAuth && lastR && (lastR.text != null || lastR.error != null)) {
-              const expired = lastR.expiresAt != null && Date.now() > Number(lastR.expiresAt);
-              if (!expired) return responseCellHTML(lastR, { rowKey: 'g:' + g.key, members: g.members, hasAuth: true });
+            if (hasAuth) {
+              const expired = lastR && lastR.expiresAt != null && Date.now() > Number(lastR.expiresAt);
+              if (!expired && (!lastR || lastR.text != null || lastR.error != null)) {
+                return responseCellHTML(lastR, { rowKey: 'g:' + g.key, members: g.members, hasAuth: true, status: first.status });
+              }
             }
             return '<div class="test-cell"></div>';
           })()}</td>
@@ -3936,10 +3844,8 @@
         m.modelId.toLowerCase().includes(searchTerm)
       );
 
-      // 1.25. Hide models with no API key configured — they can't be tested or
-      // used, so their rows (and any group left with only noauth providers) drop
-      // out of the main table entirely.
-      filtered = filtered.filter(m => m.status !== 'noauth');
+      // Models without credentials remain in the unavailable table so their
+      // No Auth status is visible instead of silently disappearing.
 
       // 1.5. Apply Filter Rules (minSweScore, excludedProviders) - marks as excluded for display
       const { minSweScore, excludedProviders } = filterRules;
@@ -3952,39 +3858,6 @@
             return { ...m, status: 'excluded', _excludedReason: isExcludedProvider ? 'provider' : 'swe' };
           }
           return m;
-        });
-      }
-
-      // 2. Apply Checkbox Filters
-      const getChecked = (id) => Array.from(document.querySelectorAll(`#${id} input:checked`)).map(cb => cb.value);
-      const allChecked = (id) => document.querySelectorAll(`#${id} input`).length === document.querySelectorAll(`#${id} input:checked`).length;
-
-      const fProv = getChecked('filter-provider-group');
-      const fPing = getChecked('filter-ping-group');
-      const fAvail = getChecked('filter-avail-group');
-      const fStatus = getChecked('filter-status-group');
-
-      if (!allChecked('filter-provider-group')) filtered = filtered.filter(m => fProv.includes(m.providerKey));
-      if (!allChecked('filter-status-group')) filtered = filtered.filter(m => fStatus.includes(m.status));
-
-      if (!allChecked('filter-ping-group')) {
-        filtered = filtered.filter(m => {
-          const p = m.avg;
-          if (p === Infinity || p === null) return false;
-          if (fPing.includes('fast') && p < 400) return true;
-          if (fPing.includes('medium') && p >= 400 && p < 1200) return true;
-          if (fPing.includes('slow') && p >= 1200) return true;
-          return false;
-        });
-      }
-
-      if (!allChecked('filter-avail-group')) {
-        filtered = filtered.filter(m => {
-          const u = m.uptime;
-          if (fAvail.includes('excellent') && u >= 95) return true;
-          if (fAvail.includes('good') && u >= 85 && u < 95) return true;
-          if (fAvail.includes('poor') && u < 85) return true;
-          return false;
         });
       }
 
@@ -4055,7 +3928,7 @@
     // Keyed reconciliation: match existing rows by data-row-key, reuse them in place
     // (updating their cells), create rows for new keys, move only the rows whose
     // position actually changed, and drop rows that no longer exist. Unmoved rows
-    // are never detached, so their ping-dot animations keep running uninterrupted.
+    // are never detached, so their live values keep updating uninterrupted.
     function reconcileTable(tbody, expanded, newOrderKeys) {
       const existing = new Map();
       for (const row of Array.from(tbody.rows)) existing.set(row.dataset.rowKey, row);
@@ -4133,17 +4006,11 @@
 
       // Update ping (with uptime% and rate-limit icon in the subtitle)
       const pingCell = row.cells[2];
-      const pingDot = pingCell.querySelector('.ping-dot');
       const pingTextEl = pingCell.querySelector('div[style*="text-align"]') || pingCell.querySelector('div:last-child');
       if (hasPing) {
-        if (pingDot) {
-          pingDot.className = 'ping-dot active ' + getPingAnimClass(m.avg);
-          pingDot.style.setProperty('--speed', getPingSpeed(m.avg));
-        }
         const rateTxt = (m.status === 'up' && m.isRateLimited) ? ' 🕑' : '';
         if (pingTextEl) pingTextEl.innerHTML = `<div style="font-size:0.82rem;">${m.avg}ms</div><div style="font-size:0.7rem; color:var(--text-muted);">${m.uptime}%${rateTxt}</div>`;
       } else {
-        if (pingDot) pingDot.className = 'ping-dot';
         if (pingTextEl) pingTextEl.innerHTML = '<span style="font-size: 0.75rem; color: var(--text-muted);">OFFLINE</span>';
       }
 
@@ -4194,14 +4061,17 @@
       </td>`;
     }
 
-    // Returns the most recent successful test response across a group's members (for
-    // heading rows). Errors are never propagated to the heading — they stay on the
-    // provider row that produced them.
+    // Returns the most recent test response across a group's members. For a
+    // multi-provider group, any successful text response wins so the heading can
+    // show that at least one provider is ready.
     function groupLastResponse(g) {
       let latest = null;
       for (const m of g.members) {
         const lr = m.lastResponse;
-        if (!lr || lr.error) continue;
+        if (!lr) continue;
+        if (g.members.length > 1 && lr.error == null && lr.text != null && String(lr.text).trim() !== '') {
+          return { ...lr, text: 'Ready', _groupReady: true };
+        }
         if (!latest || (lr.at || 0) > (latest.at || 0)) latest = lr;
       }
       return latest;
@@ -4238,7 +4108,13 @@
       // Timeout errors carry an expiry; once it passes, treat the result as absent
       // so a stale timeout no longer populates the test result field.
       const expired = lastResponse.expiresAt != null && Date.now() > Number(lastResponse.expiresAt);
-      const errText = !expired && lastResponse.error ? String(lastResponse.error) : '';
+      // A row currently showing the rate-limit clock (exhausted) already communicates
+      // the 429 — the raw quota/error dump in the Response cell is redundant next to
+      // it, so suppress the error text while the clock is up. Looked up by rowKey so
+      // every render path (initial build, live poll, post-test) stays consistent.
+      const clockedModel = (opts && opts.rowKey) ? allModels.find(mm => getModelRowKey(mm) === opts.rowKey) : null;
+      const clocked = clockedModel ? getRateLimitResetAt(clockedModel) != null : false;
+      const errText = !clocked && !expired && lastResponse.error ? String(lastResponse.error) : '';
       const okText = !errText && !expired && lastResponse.text != null ? String(lastResponse.text) : '';
       const text = stripThoughtTags(errText || okText);
       // A successful response that outlives the provider's current health (the row
@@ -4259,7 +4135,7 @@
       const meta = metaBits.length > 0 ? `<div class="test-meta">${metaBits.join(' · ')}</div>` : '';
       const expAttr = lastResponse.expiresAt != null ? ` data-expires-at="${lastResponse.expiresAt}"` : '';
       const body = text
-        ? `<div class="test-response ${errText ? 'err' : 'ok'}"${expAttr} title="${escapeAttr(text)}">${escapeHtml(text)}</div>`
+        ? `<div class="test-response ${errText ? 'err' : 'ok'}"${expAttr} title="${escapeAttr(text)}">${escapeHtml(lastResponse._groupReady ? 'Ready' : text)}</div>`
         : (errText ? `<div class="test-response err"${expAttr}>HTTP ${lastResponse.status}</div>` : '');
       return `<div class="test-cell">${btn}${body}${meta}</div>`;
     }
@@ -4329,7 +4205,8 @@
         // Errors from a group test never propagate to the heading row; leave the
         // Response cell's Test button there and keep the error on the provider row.
         const isGroupTest = opts && opts.members && opts.members.length > 0;
-        cell.innerHTML = (isGroupTest && lastResponse.error)
+        const hideGroupError = isGroupTest && opts.members.length > 1 && lastResponse.error;
+        cell.innerHTML = hideGroupError
           ? responseCellHTML(null, opts)
           : responseCellHTML(lastResponse, opts);
       } catch (err) {
@@ -4351,12 +4228,32 @@
     // Epoch-ms reset time: from the most recent test response first, otherwise
     // a reset captured by the proxy path (retryDelay/x-ratelimit headers).
     function getRateLimitResetAt(m) {
+      const errorText = String(m?.lastResponse?.error || '');
+      let bodyError = null;
+      try {
+        const parsed = JSON.parse(errorText);
+        bodyError = Array.isArray(parsed) ? parsed[0]?.error : parsed?.error;
+      } catch {
+        // The persisted error may be plain text rather than JSON.
+      }
+      const bodyRateLimited = Number(bodyError?.code) === 429
+        || /resource_exhausted|quota exceeded|rate limit exceeded|too many requests/i.test(errorText);
       const limited = m?.rateLimit?.wasRateLimited === true
         || (m?.rateLimit?.creditLimit > 0 && m?.rateLimit?.creditRemaining != null && m.rateLimit.creditRemaining <= 0)
-        || Number(m?.lastResponse?.status) === 429;
+        || Number(m?.lastResponse?.status) === 429
+        || bodyRateLimited;
       if (!limited) return null;
+      const bodyReset = bodyError?.metadata?.headers?.['X-RateLimit-Reset']
+        ?? bodyError?.metadata?.headers?.['x-ratelimit-reset']
+        ?? bodyError?.headers?.['X-RateLimit-Reset']
+        ?? bodyError?.headers?.['x-ratelimit-reset'];
+      const parsedBodyReset = Number(bodyReset);
+      const bodyResetAt = Number.isFinite(parsedBodyReset) && parsedBodyReset > 0
+        ? (parsedBodyReset >= 1e12 ? parsedBodyReset : parsedBodyReset * 1000)
+        : null;
       const values = [
         m?.lastResponse?.rateLimitResetAt,
+        bodyResetAt,
         m?.rateLimit?.resetRequestsAt,
         m?.rateLimit?.resetTokensAt,
         m?.rateLimit?.creditResetAt,
@@ -4364,7 +4261,18 @@
       const future = values
         .map(Number)
         .filter(value => Number.isFinite(value) && value > Date.now());
-      return future.length > 0 ? Math.max(...future) : null;
+      if (future.length > 0) return Math.max(...future);
+
+      // Older persisted test responses may contain the provider's retry delay
+      // but predate rateLimitResetAt. Recover the countdown from that diagnostic
+      // instead of displaying a misleading plain Down status.
+      if (limited) {
+        const retry = errorText.match(/(?:please\s+)?retry\s+in\s+(\d+(?:\.\d+)?)\s*s/i);
+        const delayMs = retry ? Number(retry[1]) * 1000 : 0;
+        const responseAt = Number(m?.lastResponse?.at) || Date.now();
+        if (delayMs > 0 && Number.isFinite(responseAt)) return responseAt + delayMs;
+      }
+      return null;
     }
 
     // Human-ish label for a quota failure, e.g. "generate quotum: 20" ->
@@ -4668,11 +4576,13 @@
       const deadCount = members.filter(m => (m.lastResponse && m.lastResponse.dead === true) || m.status === 'dead').length;
       const incompatCount = members.filter(m => (m.lastResponse && m.lastResponse.incompatible === true) || m.status === 'incompatible').length;
       const microCount = members.filter(m => m.microContext === true).length;
+      const noAuthCount = members.filter(m => m.status === 'noauth').length;
       const statusParts = [];
       if (paidCount > 0) statusParts.push(`${paidCount} paid`);
       if (deadCount > 0) statusParts.push(`${deadCount} dead`);
       if (incompatCount > 0) statusParts.push(`${incompatCount} incompatible`);
       if (microCount > 0) statusParts.push(`${microCount} Micro`);
+      if (noAuthCount > 0) statusParts.push(`${noAuthCount} No Auth`);
       const statusText = statusParts.join(' / ') || 'Unavailable';
       const hasAuth = members.some(m => m.status !== 'noauth');
 
@@ -4683,12 +4593,11 @@
             <div style="font-weight: 700; font-size: 0.92rem; display:flex; align-items:center; gap:8px;">
               <span title="${escapeHtml(cleanHeadingModelName(g.label))}">${escapeHtml(cleanHeadingModelName(g.label))}</span>
             </div>
-            <div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(g.canonicalId)} • ${members.length} provider${members.length > 1 ? 's' : ''}</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">${members.length === 1 ? escapeHtml(PROVIDER_NAMES[members[0].providerKey] || members[0].providerKey) : `${escapeHtml(g.canonicalId)} • ${members.length} providers`}</div>
           </td>
           <td><div style="font-weight: 600;">${getBenchmarkTableDisplayValue(s.bestIntellMember.intell, s.bestIntellMember.qualitySource, s.bestIntellMember.qualityDetail, s.bestIntellMember.elo)}</div></td>
           <td class="text-right">
             <div style="display: flex; align-items: center; gap: 8px; justify-content: flex-end;">
-              <div class="ping-dot ${hasPing ? 'active ' + getPingAnimClass(fastest) : ''}" style="--speed: ${getPingSpeed(fastest)}"></div>
               <div style="font-variant-numeric: tabular-nums; text-align:right; line-height:1.3;">
                 ${hasPing
           ? `<div style="font-size:0.82rem;">${fastest}ms</div><div style="font-size:0.7rem; color:var(--text-muted);">${s.bestUptime}%</div>`
@@ -4696,14 +4605,14 @@
               </div>
             </div>
           </td>
-          ${formatTtftCell(s.minTtft, 'best')}
-          ${formatTpsCell(s.maxTps, 'best')}
+          ${formatTtftCell(s.minTtft, 'ttft')}
+          ${formatTpsCell(s.maxTps, 'tok/s')}
           <td>
             <div style="font-weight: 600; font-variant-numeric: tabular-nums;" title="${s.bestCtxMember && s.bestCtxMember.contextSource === 'observed' ? 'Bounds inferred from real requests' : (s.bestCtxMember && s.bestCtxMember.context ? 'Known context window' : 'Largest context window among providers')}">${s.bestCtxMember && s.bestCtxMember.context ? escapeHtml(s.bestCtxMember.context) : '<span style="font-size:0.75rem;color:var(--text-muted);">—</span>'}</div>
           </td>
           <td><div style="font-size:0.75rem;font-weight:600;">${escapeHtml(statusText)}</div></td>
           <td>${hasAuth
-            ? responseCellHTML(lastResponse, { rowKey: 'g:' + g.key, members, hasAuth: true })
+            ? responseCellHTML(lastResponse, { rowKey: 'g:' + g.key, members, hasAuth: true, status: first.status })
             : '<div class="test-cell"></div>'}</td>`;
     }
 
@@ -4714,8 +4623,6 @@
       tr.style.opacity = m.status === 'excluded' || m.status === 'banned' ? '0.5' : '1';
       tr.classList.toggle('row-struck', isRowStruck(m));
       const hasPing = m.avg !== Infinity && m.avg !== null;
-      const pingClass = getPingAnimClass(m.avg);
-      const pingSpeed = getPingSpeed(m.avg);
 
       const isPinnedRow = activePinnedRowKeys.includes(getModelRowKey(m));
       tr.innerHTML = `
@@ -4728,7 +4635,6 @@
           <td><div style="font-weight: 600;"><span style="font-size:0.75rem;color:var(--text-muted);">—</span></div></td>
           <td class="text-right">
             <div style="display: flex; align-items: center; gap: 8px; justify-content: flex-end;">
-              <div class="ping-dot ${hasPing ? 'active ' + pingClass : ''}" style="--speed: ${pingSpeed}"></div>
               <div style="font-variant-numeric: tabular-nums; text-align:right; line-height:1.3;">
                 ${hasPing
           ? `<div style="font-size:0.82rem;">${m.avg}ms</div><div style="font-size:0.7rem; color:var(--text-muted);">${m.uptime}%${m.status === 'up' && m.isRateLimited ? ' 🕑' : ''}</div>`
@@ -4745,20 +4651,6 @@
           <td>${responseCellHTML(m.lastResponse, { rowKey: getModelRowKey(m), providerKey: m.providerKey, modelId: m.modelId, hasAuth: m.status !== 'noauth', status: m.status })}</td>
         `;
       return tr;
-    }
-
-    function getPingAnimClass(ms) {
-      if (ms === Infinity || ms === null) return '';
-      if (ms < 400) return 'anim-fast';
-      if (ms < 1200) return 'anim-medium';
-      return 'anim-slow';
-    }
-
-    function getPingSpeed(ms) {
-      if (ms === Infinity || ms === null) return '0s';
-      if (ms < 400) return '3.5s';
-      if (ms < 1200) return '2.5s';
-      return '1.8s';
     }
 
     function getQosDisplayValue(qos) {
@@ -5011,6 +4903,10 @@
               <input type="checkbox" id="autoping-enabled" ${enabled ? 'checked' : ''}>
               Enable auto-ping
             </label>
+            <label class="autoupdate-interval-label">
+              Interval (minutes)
+              <input id="autoping-interval" type="number" min="1" step="1" value="${autoPing.intervalMinutes || 30}">
+            </label>
             <button class="btn" onclick="saveAutoPingSettings()">Save Changes</button>
             <span id="autoping-save-status" class="autoupdate-save-status"></span>
           </div>
@@ -5070,12 +4966,14 @@
 
     async function saveAutoPingSettings() {
       const enabled = document.getElementById('autoping-enabled').checked;
+      const intervalInput = document.getElementById('autoping-interval');
+      const intervalMinutes = Math.floor(Number(intervalInput?.value || 30));
       const statusEl = document.getElementById('autoping-save-status');
       try {
         const res = await fetch('/api/auto-ping', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ enabled }),
+          body: JSON.stringify({ enabled, intervalMinutes }),
         });
         if (!res.ok) throw new Error('Failed to save.');
         statusEl.textContent = 'Saved!';
@@ -5233,23 +5131,6 @@
           </div>
         </div>
       `;
-    }
-
-    function renderProviderFilterGroup(providerConfigs) {
-      const providerGroup = document.getElementById('filter-provider-group');
-      if (!providerGroup) return;
-
-      const selected = new Set(Array.from(providerGroup.querySelectorAll('input:checked')).map(cb => cb.value));
-      const enabledProviders = (providerConfigs || []).filter(p => p.enabled);
-
-      providerGroup.innerHTML = enabledProviders
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .map(p => `<label class="cb-label"><input type="checkbox" value="${escapeHtml(p.key)}" checked onchange="render(true)"> ${escapeHtml(p.name)}</label>`)
-        .join('');
-
-      providerGroup.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-        cb.checked = selected.size === 0 || selected.has(cb.value);
-      });
     }
 
     function closeProviderSyncModal() {
@@ -5479,12 +5360,12 @@
         renderLoggingSettings((meta && meta.logging) || {});
         renderPinningSettings(pinning);
         renderFilterRules(filterRules, providers);
-        renderProviderFilterGroup(providers);
         const container = document.getElementById('providers-container');
+        if (!container) return;
         container.innerHTML = '';
 
         const addEndpointSection = document.createElement('div');
-        addEndpointSection.className = 'provider-section';
+        addEndpointSection.className = 'provider-section autoupdate-panel';
         addEndpointSection.innerHTML = `
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
             <h3 style="margin:0; font-size:1rem;">OpenAI-Compatible endpoints</h3>
@@ -5605,7 +5486,7 @@
 
           const section = document.createElement('div');
           const isRefreshing = providerRefreshInFlight.has(p.key);
-          section.className = 'provider-section';
+          section.className = 'provider-section autoupdate-panel';
           if (p.key === 'kiro') {
             const kiroStatusOk = p.hasKey;
             const kiroStatusBg = kiroStatusOk ? 'var(--status-success-bg)' : 'var(--status-warning-bg)';
@@ -5697,19 +5578,12 @@
               <div class="form-group" style="display:flex; gap:8px; align-items:center;">
                 <input type="password" id="key-${p.key}" placeholder="${p.hasKey ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (Refresh Token Configured)' : 'Paste Kiro refresh token...'}" style="flex:1; background:var(--input-bg); color:var(--text);" onkeydown="if(event.key==='Enter'){event.preventDefault(); saveKiroRefreshToken();}">
                 <button onclick="toggleProviderKeyVisibility(${jsStringAttr(p.key)}, this)" title="Show or hide token" aria-label="Show or hide token" style="border:1px solid var(--border); background:var(--input-bg); color:var(--text); cursor:pointer; padding:8px 10px; border-radius:6px; font-size:0.85rem; white-space:nowrap;">👁</button>
-                ${p.hasKey ? `<button onclick="copyProviderKey(${jsStringAttr(p.key)}, this)" title="Copy token" style="border:1px solid var(--border); background:var(--input-bg); color:var(--text); cursor:pointer; padding:8px 10px; border-radius:6px; font-size:0.78rem; white-space:nowrap;">Copy</button>` : ''}
                 <button onclick="saveKiroRefreshToken()" style="border:1px solid var(--status-success-border); background:var(--status-success-bg); color:var(--status-success-text); cursor:pointer; padding:8px 12px; border-radius:6px; font-size:0.8rem; font-weight:600; white-space:nowrap;">Save Token</button>
-                ${p.hasKey ? `<button onclick="deleteProviderKey(${jsStringAttr(p.key)})" style="border:1px solid var(--status-error-border); background:var(--status-error-bg); color:var(--status-error-text); cursor:pointer; padding:8px 12px; border-radius:6px; font-size:0.8rem; font-weight:600; white-space:nowrap;">Delete Token</button>` : ''}
               </div>
               <div style="font-size:0.75rem; color:var(--text-muted); margin-top:6px;">ModelRelay stores the resulting Kiro refresh token locally in your ModelRelay config. Auto-import/manual token are still useful if Kiro is already signed in on this machine.</div>
               ${kiroDeviceAuthHtml}
               ${kiroBrowserAuthHtml}
               ${kiroMessageHtml}
-              <div class="form-group" style="display:flex; gap:8px; align-items:center; margin-top:12px;">
-                <span style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap;">Ping interval (min):</span>
-                <input type="number" id="ping-interval-${p.key}" min="1" step="1" value="${p.pingIntervalMinutes || ''}" placeholder="30" style="width:70px; padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-size:0.8rem; background:var(--input-bg); color:var(--text);" onchange="updateProviderPingInterval(${jsStringAttr(p.key)})">
-                <span style="font-size:0.75rem; color:var(--text-muted);">(default: 30)</span>
-              </div>
               ${providerErrorHtml}
               ${rateLimitHtml}
             `;
@@ -5720,7 +5594,7 @@
             <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.75rem;">
               <div style="display:flex; align-items:center; gap:10px;">
                 <span style="background:${statusBg}; color:${statusColor}; border-radius:999px; padding:2px 10px; font-size:0.75rem; font-weight:600;">${statusIcon} ${statusText}</span>
-                <h3 style="margin:0; font-size:1rem;">${p.name}</h3>
+                ${p.signupUrl ? `<a href="${p.signupUrl}" target="_blank" rel="noopener noreferrer" title="Get API key" style="font-size:1rem; color:var(--accent); text-decoration:none; font-weight:600;">${escapeHtml(p.name)}</a>` : `<h3 style="margin:0; font-size:1rem;">${escapeHtml(p.name)}</h3>`}
                 <button class="provider-model-refresh-btn ${isRefreshing ? 'is-loading' : ''}" ${isRefreshing ? 'disabled' : ''} onclick='refreshProviderModels(${jsStringAttr(p.key)}, ${jsStringAttr(p.name)})' title="Refresh provider models">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
@@ -5728,7 +5602,6 @@
                   </svg>
                   <span>${isRefreshing ? 'Refreshing…' : `${modelCount} model${modelCount !== 1 ? 's' : ''}`}</span>
                 </button>
-                ${p.signupUrl ? `<a href="${p.signupUrl}" target="_blank" rel="noopener noreferrer" style="font-size:0.78rem; color:var(--accent); text-decoration:none; font-weight:600;">Get API key</a>` : ''}
               </div>
               <div style="display:flex; align-items:center; gap:10px;">
                 <label style="display:flex; align-items:center; gap:6px; font-size:0.8rem; cursor:pointer;">
@@ -5740,13 +5613,6 @@
             <div class="form-group" style="display:flex; gap:8px; align-items:center;">
               <input type="password" id="key-${p.key}" placeholder="${p.hasKey ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (' + (tokenOptional ? 'API Key Configured' : 'Key Configured') + ')' : (tokenOptional ? 'Enter API Key (optional)...' : 'Enter API Key...')}" style="flex:1; background:var(--input-bg); color:var(--text);" onblur="updateProviderKey(${jsStringAttr(p.key)})">
               <button onclick="toggleProviderKeyVisibility(${jsStringAttr(p.key)}, this)" title="Show or hide API key" aria-label="Show or hide API key" style="border:1px solid var(--border); background:var(--input-bg); color:var(--text); cursor:pointer; padding:8px 10px; border-radius:6px; font-size:0.85rem; white-space:nowrap;">👁</button>
-              ${p.hasKey ? `<button onclick="copyProviderKey(${jsStringAttr(p.key)}, this)" title="Copy API key" style="border:1px solid var(--border); background:var(--input-bg); color:var(--text); cursor:pointer; padding:8px 10px; border-radius:6px; font-size:0.78rem; white-space:nowrap;">Copy</button>` : ''}
-              ${p.hasKey ? `<button onclick="deleteProviderKey(${jsStringAttr(p.key)})" style="border:1px solid var(--status-error-border); background:var(--status-error-bg); color:var(--status-error-text); cursor:pointer; padding:8px 12px; border-radius:6px; font-size:0.8rem; font-weight:600; white-space:nowrap;">Delete Key</button>` : ''}
-            </div>
-            <div class="form-group" style="display:flex; gap:8px; align-items:center; margin-top:8px;">
-              <span style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap;">Ping interval (min):</span>
-              <input type="number" id="ping-interval-${p.key}" min="1" step="1" value="${p.pingIntervalMinutes || ''}" placeholder="30" style="width:70px; padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-size:0.8rem; background:var(--input-bg); color:var(--text);" onchange="updateProviderPingInterval(${jsStringAttr(p.key)})">
-              <span style="font-size:0.75rem; color:var(--text-muted);">(default: 30)</span>
             </div>
             ${(Array.isArray(p.apiKeyPool) && p.apiKeyPool.length > 0) ? `
             <div style="margin-top:14px; padding:12px 14px; background:var(--input-bg-alt); border:1px solid var(--border); border-radius:10px;">
@@ -5767,11 +5633,6 @@
               <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">
                 <input type="password" id="new-key-${p.key}" placeholder="Add new account key..." style="flex:1; padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-size:0.78rem; background:var(--input-bg); color:var(--text);">
                 <button onclick="addAccountKey(${jsStringAttr(p.key)})" style="border:1px solid var(--status-success-border); background:var(--status-success-bg); color:var(--status-success-text); cursor:pointer; padding:6px 12px; border-radius:6px; font-size:0.78rem; font-weight:600;">Add Account</button>
-              </div>
-              <div style="display:flex; gap:8px; align-items:center;">
-                <span style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap;">Max turns per account:</span>
-                <input type="number" id="maxturns-${p.key}" min="0" step="1" value="${p.maxTurns || 0}" style="width:70px; padding:5px 8px; border:1px solid var(--border); border-radius:6px; font-size:0.78rem;" onchange="updateProviderMaxTurns(${jsStringAttr(p.key)})">
-                <span style="font-size:0.72rem; color:var(--text-muted);">0 = unlimited</span>
               </div>
             </div>
             ` : ''}
@@ -5796,6 +5657,7 @@
 
     async function updateProviderKey(key) {
       const input = document.getElementById(`key-${key}`);
+      if (!input) return;
       const val = input.value.trim();
       if (!val) return;
       if (input.dataset.revealedKey === val) {
@@ -5804,13 +5666,20 @@
         delete input.dataset.revealedKey;
         return;
       }
-      await fetch('/api/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ providerKey: key, apiKey: val })
-      });
-      input.value = '';
-      loadSettings();
+      try {
+        const res = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ providerKey: key, apiKey: val })
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+        input.value = '';
+        await loadSettings();
+        await fetchData();
+      } catch (err) {
+        console.error('Failed to save provider key:', err);
+        alert(`Could not save provider key: ${err.message || err}`);
+      }
     }
 
     async function getConfiguredProviderKey(providerKey) {
@@ -5884,15 +5753,22 @@
     }
 
     async function deleteProviderKey(key) {
+      if (!confirm(`Delete the configured key for ${PROVIDER_NAMES[key] || key}?`)) return;
       const input = document.getElementById(`key-${key}`);
-      await fetch('/api/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ providerKey: key, apiKey: null })
-      });
-      if (input) input.value = '';
-      await loadSettings();
-      await fetchData();
+      try {
+        const res = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ providerKey: key, apiKey: null })
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+        if (input) input.value = '';
+        await loadSettings();
+        await fetchData();
+      } catch (err) {
+        console.error('Failed to delete provider key:', err);
+        alert(`Could not delete provider key: ${err.message || err}`);
+      }
     }
 
     async function updateProviderBaseUrl(key) {
@@ -5962,23 +5838,6 @@
       await fetchData();
     }
 
-    async function updateProviderPingInterval(key) {
-      const input = document.getElementById(`ping-interval-${key}`);
-      const val = input.value.trim();
-      let pingIntervalMinutes = null;
-      if (val !== '') {
-        const parsed = parseInt(val, 10);
-        if (!Number.isNaN(parsed) && parsed >= 1) {
-          pingIntervalMinutes = parsed;
-        }
-      }
-      await fetch('/api/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ providerKey: key, pingIntervalMinutes })
-      });
-    }
-
     async function addAccountKey(providerKey) {
       const input = document.getElementById(`new-key-${providerKey}`);
       if (!input) return;
@@ -5986,63 +5845,50 @@
       if (!val) return;
       try {
         const res = await fetch('/api/config');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const providers = await res.json();
         const p = providers.find(pr => pr.key === providerKey);
-        if (!p) return;
-        let newPool;
-        if (Array.isArray(p.apiKeyPool) && p.apiKeyPool.length > 0) {
-          const existingKeys = p.apiKeyPool.map(a => a.key);
-          newPool = [...existingKeys, val];
-        } else {
-          newPool = [val];
-        }
-        await fetch('/api/config', {
+        if (!p) throw new Error('Provider not found.');
+        const existingKeys = Array.isArray(p.apiKeyPool) ? p.apiKeyPool.map(a => a.key).filter(Boolean) : [];
+        if (existingKeys.includes(val)) throw new Error('That key is already configured.');
+        const saveRes = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ providerKey, apiKeys: [...existingKeys, val] })
+        });
+        if (!saveRes.ok) throw new Error((await saveRes.json().catch(() => ({}))).error || `HTTP ${saveRes.status}`);
+        input.value = '';
+        await loadSettings();
+        await fetchData();
+        await loadAccountStatus();
+      } catch (err) {
+        console.error('Failed to add provider key:', err);
+        alert(`Could not add provider key: ${err.message || err}`);
+      }
+    }
+
+    async function removeAccountKey(providerKey, index) {
+      if (!confirm(`Remove account ${Number(index) + 1} for ${PROVIDER_NAMES[providerKey] || providerKey}?`)) return;
+      try {
+        const res = await fetch('/api/config');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const providers = await res.json();
+        const p = providers.find(pr => pr.key === providerKey);
+        if (!p || !Array.isArray(p.apiKeyPool)) throw new Error('Provider account list not found.');
+        const newPool = p.apiKeyPool.map(a => a.key).filter((_, i) => i !== index);
+        const saveRes = await fetch('/api/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ providerKey, apiKeys: newPool })
         });
-        input.value = '';
+        if (!saveRes.ok) throw new Error((await saveRes.json().catch(() => ({}))).error || `HTTP ${saveRes.status}`);
         await loadSettings();
+        await fetchData();
         await loadAccountStatus();
-      } catch (err) { console.error(err); }
-    }
-
-    async function removeAccountKey(providerKey, index) {
-      try {
-        const res = await fetch('/api/config');
-        const providers = await res.json();
-        const p = providers.find(pr => pr.key === providerKey);
-        if (!p || !Array.isArray(p.apiKeyPool)) return;
-        const newPool = p.apiKeyPool.map(a => a.key).filter((_, i) => i !== index);
-        if (newPool.length === 0) {
-          await fetch('/api/config', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ providerKey, apiKeys: [] })
-          });
-        } else {
-          await fetch('/api/config', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ providerKey, apiKeys: newPool })
-          });
-        }
-        await loadSettings();
-        await loadAccountStatus();
-      } catch (err) { console.error(err); }
-    }
-
-    async function updateProviderMaxTurns(providerKey) {
-      const input = document.getElementById(`maxturns-${providerKey}`);
-      if (!input) return;
-      const val = input.value.trim();
-      const parsed = Math.floor(Number(val));
-      const maxTurns = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
-      await fetch('/api/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ providerKey, maxTurns })
-      });
+      } catch (err) {
+        console.error('Failed to remove provider key:', err);
+        alert(`Could not remove provider key: ${err.message || err}`);
+      }
     }
 
     async function loadAccountStatus() {
@@ -6073,7 +5919,6 @@
               <th style="text-align:left; padding:12px 24px; font-size:0.75rem; color:var(--text-muted); font-weight:600; background:var(--chat-bg);">Account</th>
               <th style="text-align:left; padding:12px 24px; font-size:0.75rem; color:var(--text-muted); font-weight:600; background:var(--chat-bg);">Status</th>
               <th style="text-align:right; padding:12px 24px; font-size:0.75rem; color:var(--text-muted); font-weight:600; background:var(--chat-bg);">Requests</th>
-              <th style="text-align:right; padding:12px 24px; font-size:0.75rem; color:var(--text-muted); font-weight:600; background:var(--chat-bg);">Max Turns</th>
               <th style="text-align:center; padding:12px 24px; font-size:0.75rem; color:var(--text-muted); font-weight:600; background:var(--chat-bg);">Next</th>
             </tr>
           </thead>
@@ -6081,10 +5926,8 @@
 
         for (const [key, info] of Object.entries(providers)) {
           const name = providerNames[key] || key;
-          const maxTurns = info.maxTurns || 0;
           for (const acct of info.accounts) {
             const isRateLimited = acct.rateLimited;
-            const hitMaxTurns = maxTurns > 0 && acct.requests >= maxTurns;
             let statusIcon = '🟢';
             let statusColor = 'var(--status-success-text)';
             let statusBg = 'var(--status-success-bg)';
@@ -6094,11 +5937,6 @@
               statusColor = 'var(--status-error-text)';
               statusBg = 'var(--status-error-bg)';
               statusText = 'Rate Limited';
-            } else if (hitMaxTurns) {
-              statusIcon = '🟡';
-              statusColor = 'var(--status-warning-text)';
-              statusBg = 'var(--status-warning-bg)';
-              statusText = 'Cooling';
             }
             const isNext = acct.index === info.currentIdx;
             html += `<tr style="border-bottom:1px solid var(--border);">
@@ -6110,7 +5948,6 @@
                 <span style="background:${statusBg}; color:${statusColor}; border-radius:999px; padding:2px 10px; font-size:0.72rem; font-weight:700;">${statusIcon} ${statusText}</span>
               </td>
               <td style="padding:14px 24px; text-align:right; font-size:0.875rem; font-weight:600; font-variant-numeric:tabular-nums;">${acct.requests}</td>
-              <td style="padding:14px 24px; text-align:right; font-size:0.875rem; color:var(--text-muted);">${maxTurns > 0 ? maxTurns : 'unlimited'}</td>
               <td style="padding:14px 24px; text-align:center; font-size:1.1rem;">${isNext ? '→' : ''}</td>
             </tr>`;
           }
