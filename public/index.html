@@ -3896,7 +3896,6 @@
           <td>
             <div style="font-weight: 600; font-variant-numeric: tabular-nums;" title="${s.bestCtxMember && s.bestCtxMember.contextSource === 'observed' ? 'Bounds inferred from real requests' : (s.bestCtxMember && s.bestCtxMember.context ? 'Known context window' : 'Largest context window among providers')}">${s.bestCtxMember && s.bestCtxMember.context ? escapeHtml(s.bestCtxMember.context) : '<span style="font-size:0.75rem;color:var(--text-muted);">—</span>'}</div>
           </td>
-          <td><div style="font-size:0.75rem;color:var(--text-muted);">—</div></td>
           <td><div style="display: flex; align-items: center; gap: 6px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: ${statusColor}"></span><span style="font-size: 0.75rem; font-weight: 500;">${statusText}</span></div></td>
           <td>${(() => {
             // Group response: the most recent successful test across the group's providers
