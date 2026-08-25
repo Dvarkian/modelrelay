@@ -1,13 +1,13 @@
-# 🚀 modelrelay
+# 🚀 hammer
 
-[![npm version](https://img.shields.io/npm/v/modelrelay?color=green&style=flat-square)](https://npmjs.com/package/modelrelay)
-[![GitHub stars](https://img.shields.io/github/stars/ellipticmarketing/modelrelay?style=flat-square)](https://github.com/ellipticmarketing/modelrelay/stargazers)
+[![npm version](https://img.shields.io/npm/v/hammer?color=green&style=flat-square)](https://npmjs.com/package/hammer)
+[![GitHub stars](https://img.shields.io/github/stars/Dvarkian/hammer?style=flat-square)](https://github.com/Dvarkian/hammer/stargazers)
 [![Join Discord](https://img.shields.io/badge/Join_Discord-5865F2?style=flat-square&logo=discord)](https://discord.gg/AqX6Sawq5w)
 
 [**Join our Discord**](https://discord.gg/AqX6Sawq5w) for discussions, feature requests, and community support.
 
 <div align="center">
-  <img src="docs/assets/dashboard.png" alt="ModelRelay Dashboard" width="100%">
+  <img src="docs/assets/dashboard.png" alt="Hammer Dashboard" width="100%">
   <br/>
   <p><i>The smartest, fastest, and completely free local router for your AI coding needs.</i></p>
 </div>
@@ -16,9 +16,9 @@
 
 ### 🔥 100% Free • Auto-Routing • 80+ Models • 12+ Providers • OpenAI-Compatible
 
-**modelrelay** is an OpenAI-compatible local router that benchmarks free coding models across top providers and automatically forwards your requests to the best available model. 
+**hammer** is an OpenAI-compatible local router that benchmarks free coding models across top providers and automatically forwards your requests to the best available model. 
 
-### ✨ Why use modelrelay?
+### ✨ Why use hammer?
 
 - 💸 **Completely Free:** Stop paying for API usage. We seamlessly provide access to robust free models.
 - 🧠 **State-of-the-Art (SOTA) Models:** Out-of-the-box availability for top-tier models including **Kimi K2.5, Minimax M2.5, GLM 5, Deepseek V3.2**, and more.
@@ -29,13 +29,13 @@
 ## 🚀 Install via NPM
 
 ```bash
-npm install -g modelrelay
+npm install -g hammer
 
 # Start it
-modelrelay
+hammer
 ```
 
-Once started, modelrelay is accessible at `http://localhost:7352/`.
+Once started, hammer is accessible at `http://localhost:7352/`.
 
 Router endpoint:
 
@@ -51,31 +51,31 @@ Router endpoint:
 
 
 ```bash
-mkdir modelrelay
+mkdir hammer
 
-cd modelrelay
+cd hammer
 
-curl -fsSL -o Dockerfile https://raw.githubusercontent.com/ellipticmarketing/modelrelay/master/Dockerfile
-curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/ellipticmarketing/modelrelay/master/docker-compose.yml
+curl -fsSL -o Dockerfile https://raw.githubusercontent.com/Dvarkian/hammer/master/Dockerfile
+curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/Dvarkian/hammer/master/docker-compose.yml
 
 docker compose up -d --build
 ```
 
-Once running, modelrelay is accessible at `http://localhost:7352/`.
+Once running, hammer is accessible at `http://localhost:7352/`.
 
 ## 🔌 Installing Integrations
 
-Use `modelrelay onboard` to save provider keys and auto-configure integrations for OpenClaw or OpenCode.
+Use `hammer onboard` to save provider keys and auto-configure integrations for OpenClaw or OpenCode.
 
 ```bash
-modelrelay onboard
+hammer onboard
 ```
 
 If you prefer manual setup, use the examples below.
 
 ## OpenCode Integration
 
-`modelrelay onboard` can auto-configure OpenCode.
+`hammer onboard` can auto-configure OpenCode.
 
 If you want manual setup, put this in `~/.config/opencode/opencode.json`:
 
@@ -85,7 +85,7 @@ If you want manual setup, put this in `~/.config/opencode/opencode.json`:
   "provider": {
     "router": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "modelrelay",
+      "name": "hammer",
       "options": {
         "baseURL": "http://127.0.0.1:7352/v1",
         "apiKey": "dummy-key"
@@ -103,7 +103,7 @@ If you want manual setup, put this in `~/.config/opencode/opencode.json`:
 
 ## OpenClaw Integration
 
-`modelrelay onboard` can auto-configure OpenClaw.
+`hammer onboard` can auto-configure OpenClaw.
 
 If you want manual setup, merge this into `~/.openclaw/openclaw.json`:
 
@@ -111,7 +111,7 @@ If you want manual setup, merge this into `~/.openclaw/openclaw.json`:
 {
   "models": {
     "providers": {
-      "modelrelay": {
+      "hammer": {
         "baseUrl": "http://127.0.0.1:7352/v1",
         "api": "openai-completions",
         "apiKey": "no-key",
@@ -124,10 +124,10 @@ If you want manual setup, merge this into `~/.openclaw/openclaw.json`:
   "agents": {
     "defaults": {
       "model": {
-        "primary": "modelrelay/smartest"
+        "primary": "hammer/smartest"
       },
       "models": {
-        "modelrelay/smartest": {}
+        "hammer/smartest": {}
       }
     }
   }
@@ -137,59 +137,59 @@ If you want manual setup, merge this into `~/.openclaw/openclaw.json`:
 ## CLI
 
 ```bash
-modelrelay [--port <number>] [--host <address>] [--log] [--ban <model1,model2>]
-modelrelay onboard [--port <number>]
-modelrelay install --autostart
-modelrelay start --autostart
-modelrelay uninstall --autostart
-modelrelay status --autostart
-modelrelay update
-modelrelay autoupdate [--enable|--disable|--status] [--interval <hours>]
-modelrelay autostart [--install|--start|--uninstall|--status]
-modelrelay config export
-modelrelay config import <token>
+hammer [--port <number>] [--host <address>] [--log] [--ban <model1,model2>]
+hammer onboard [--port <number>]
+hammer install --autostart
+hammer start --autostart
+hammer uninstall --autostart
+hammer status --autostart
+hammer update
+hammer autoupdate [--enable|--disable|--status] [--interval <hours>]
+hammer autostart [--install|--start|--uninstall|--status]
+hammer config export
+hammer config import <token>
 ```
 
 Request terminal logging is disabled by default. Use `--log` to enable it.
 
 ## Security
 
-By default modelrelay binds to **loopback only** (`127.0.0.1`), so the dashboard and the `/v1` proxy are reachable only from the machine running it. The dashboard API and proxy also reject cross-origin browser requests (protecting against malicious websites fetching `http://localhost:7352`) and unexpected `Host` headers (DNS-rebinding protection).
+By default hammer binds to **loopback only** (`127.0.0.1`), so the dashboard and the `/v1` proxy are reachable only from the machine running it. The dashboard API and proxy also reject cross-origin browser requests (protecting against malicious websites fetching `http://localhost:7352`) and unexpected `Host` headers (DNS-rebinding protection).
 
 To expose the router on your LAN, opt in explicitly:
 
 ```bash
-modelrelay --host 0.0.0.0
+hammer --host 0.0.0.0
 # or
-MODELRELAY_HOST=0.0.0.0 modelrelay
+HAMMER_HOST=0.0.0.0 hammer
 ```
 
 LAN mode prints an **access token** at startup. The dashboard prompts for it once (stored in your browser); non-browser clients (curl, OpenCode on another machine) must send it as `Authorization: Bearer <token>`. Loopback clients never need the token.
 
 ### Request logging
 
-Request bodies and streamed responses are captured in-memory and persisted to `~/.modelrelay-logs.json` by default, because they may contain sensitive prompts. You can limit this from **Settings → Request Logging** in the Web UI, or via env vars:
+Request bodies and streamed responses are captured in-memory and persisted to `~/.hammer-logs.json` by default, because they may contain sensitive prompts. You can limit this from **Settings → Request Logging** in the Web UI, or via env vars:
 
 ```bash
-MODELRELAY_LOG_CONTENT=0      # store roles only, never prompt/response bodies
-MODELRELAY_PERSIST_LOGS=0     # keep logs in memory only, never write to disk
+HAMMER_LOG_CONTENT=0      # store roles only, never prompt/response bodies
+HAMMER_PERSIST_LOGS=0     # keep logs in memory only, never write to disk
 ```
 
-`modelrelay install --autostart` also triggers an immediate start attempt so you do not need a separate command after install.
+`hammer install --autostart` also triggers an immediate start attempt so you do not need a separate command after install.
 
-During `modelrelay onboard`, you will also be prompted to enable auto-start on login.
+During `hammer onboard`, you will also be prompted to enable auto-start on login.
 
-`modelrelay update` upgrades the global npm package and, when autostart is configured, stops the background service first and starts it again after the update.
+`hammer update` upgrades the global npm package and, when autostart is configured, stops the background service first and starts it again after the update.
 
-Auto-update is enabled by default. While the router is running, modelrelay checks npm periodically (default: every 24 hours) and applies updates automatically.
+Auto-update is enabled by default. While the router is running, hammer checks npm periodically (default: every 24 hours) and applies updates automatically.
 
-Use `modelrelay autoupdate --status` to inspect state, `modelrelay autoupdate --disable` to turn it off, and `modelrelay autoupdate --enable --interval 12` to re-enable with a custom interval.
+Use `hammer autoupdate --status` to inspect state, `hammer autoupdate --disable` to turn it off, and `hammer autoupdate --enable --interval 12` to re-enable with a custom interval.
 
-Use `modelrelay config export` to print a transferable config token (base64url-encoded JSON), and `modelrelay config import <token>` to load it on another machine.
+Use `hammer config export` to print a transferable config token (base64url-encoded JSON), and `hammer config import <token>` to load it on another machine.
 You can also import by stdin:
 
 ```bash
-modelrelay config export | modelrelay config import
+hammer config export | hammer config import
 ```
 
 ## Endpoints
@@ -200,8 +200,8 @@ modelrelay config export | modelrelay config import
 
 - Use `model: "smartest"` to route to the highest-Elo working model
 - Use a grouped model ID such as `minimax-m2.5`, `kimi-k2.5`, or `glm4.7` to route within that model group
-- For grouped IDs, modelrelay selects the provider with the best current QoS for that group
-- Use `model: "tag:<name>"` (e.g. `tag:coding`) to route to the best currently available model carrying that tag — either a curated capability tag or a custom tag you've assigned in the Web UI (see [Model tags](#model-tags)). This is useful because the free models behind modelrelay come and go as availability changes — routing by tag survives a given model disappearing, where routing by a specific model/group ID does not.
+- For grouped IDs, hammer selects the provider with the best current QoS for that group
+- Use `model: "tag:<name>"` (e.g. `tag:coding`) to route to the best currently available model carrying that tag — either a curated capability tag or a custom tag you've assigned in the Web UI (see [Model tags](#model-tags)). This is useful because the free models behind hammer come and go as availability changes — routing by tag survives a given model disappearing, where routing by a specific model/group ID does not.
 - Append `+min_ctx:<size>` to `tag:<name>` or `smartest` to additionally require a minimum context window, e.g. `tag:general+min_ctx:32000` or `smartest+min_ctx:128k`. `<size>` accepts a raw token count or a `k`/`m` suffix. Models whose context window can't be determined, or is smaller than the requirement, are excluded. See [Model tags](#model-tags).
 - In the Web UI, pinned models can now use either `Canonical Group` mode (default, pins the same model across providers) or `Exact Provider Row` mode from `Settings`
 - Streaming and non-streaming requests are both supported
@@ -212,7 +212,7 @@ modelrelay config export | modelrelay config import
 
 - Model IDs are grouped slugs such as `minimax-m2.5`, `kimi-k2.5`, and `glm4.7`
 - Each grouped ID can represent the same model across multiple providers
-- When you select one of these IDs in `/v1/chat/completions`, modelrelay routes the request to the provider with the best current QoS for that model group
+- When you select one of these IDs in `/v1/chat/completions`, hammer routes the request to the provider with the best current QoS for that model group
 - `smartest` is also exposed and routes to the highest-Elo working model
 - Each entry includes a `tags` array combining curated capability tags with any user-defined tags (see [Model tags](#model-tags))
 
@@ -235,7 +235,7 @@ Example:
 Every model carries one or more capability tags, combined from two sources:
 
 - **Curated tags** come from a fixed vocabulary — `coding`, `reasoning`, `general`, `fast`, `agentic` — maintained by project maintainers in `tags.js`.
-- **Custom tags** are freeform labels you assign yourself. In the Web UI, open a model row and edit **Custom Routing Tags**. Assignments are keyed to the canonical model, shared across its providers, and stored in `~/.modelrelay.json`.
+- **Custom tags** are freeform labels you assign yourself. In the Web UI, open a model row and edit **Custom Routing Tags**. Assignments are keyed to the canonical model, shared across its providers, and stored in `~/.hammer.json`.
 
 Use `model: "tag:<name>"` in `/v1/chat/completions` to route to the best currently available model carrying that tag — curated or custom — instead of naming a specific model. For example, assign `coding` to a few models in the UI, then request `model: "tag:coding"`; normal QoS ranking, availability filtering, and retry behavior choose the best currently eligible tagged model.
 
@@ -249,7 +249,7 @@ Tag membership alone doesn't guarantee a model can fit your prompt — a tag can
 
 `<size>` accepts a plain token count (`32000`) or a `k`/`m` suffix (`32k`, `1m`). Models with no known context window, or a smaller one than requested, are excluded from consideration. An unparseable or unrecognized modifier is ignored, falling back to the unmodified `tag:<name>` or `smartest` behavior rather than erroring.
 
-Modelrelay uses context data reported by the selected provider when it is available. Otherwise, it uses a provider-specific curated value from `sources.js`. It does not copy a context size between providers. It also keeps the context unknown when neither source has a value. For Ollama, the allocated or configured context is usable for this filter. The model maximum alone is not sufficient.
+Hammer uses context data reported by the selected provider when it is available. Otherwise, it uses a provider-specific curated value from `sources.js`. It does not copy a context size between providers. It also keeps the context unknown when neither source has a value. For Ollama, the allocated or configured context is usable for this filter. The model maximum alone is not sufficient.
 
 ### Routing selection
 
@@ -259,7 +259,7 @@ Grouped-ID and `tag:<name>` routing retain their normal QoS behavior. For those 
 
 ## Config
 
-- Router config file: `~/.modelrelay.json`
+- Router config file: `~/.hammer.json`
 - API key env overrides:
   - `NVIDIA_API_KEY`
   - `GROQ_API_KEY`
@@ -286,17 +286,17 @@ Kiro OAuth notes:
   - `~/.aws/sso/cache` (auto-detected refresh token), following OmniRoute’s approach.
 
 For hosted Ollama, set `OLLAMA_API_KEY` and optionally override `OLLAMA_BASE_URL` / `OLLAMA_MODEL`.
-If you leave the Ollama base URL blank in the UI, modelrelay defaults to `https://ollama.com/v1`.
-With a valid Ollama API key, modelrelay will discover available Ollama models automatically.
-If you point Ollama at a local host such as `http://127.0.0.1:11434`, modelrelay will also auto-discover models and does not require an API key.
+If you leave the Ollama base URL blank in the UI, hammer defaults to `https://ollama.com/v1`.
+With a valid Ollama API key, hammer will discover available Ollama models automatically.
+If you point Ollama at a local host such as `http://127.0.0.1:11434`, hammer will also auto-discover models and does not require an API key.
 
 ### OpenAI-Compatible endpoints
 
-modelrelay supports configuring multiple OpenAI-compatible upstream endpoints (vLLM, llama.cpp, custom relays, etc.). Each endpoint exposes a single model id and is routed independently.
+hammer supports configuring multiple OpenAI-compatible upstream endpoints (vLLM, llama.cpp, custom relays, etc.). Each endpoint exposes a single model id and is routed independently.
 
 - In the Web UI, click `+ Add Endpoint` under the **OpenAI-Compatible endpoints** group, supply a name, base URL, model id, and optional API key. Each endpoint then gets its own provider row with status, ping, and rate-limit information.
-- modelrelay automatically probes `/v1/models` on each endpoint and exposes every returned model as a routable row. The manually configured model id (if any) is merged in as a fallback. Discovery is on by default and can be toggled per-endpoint with the **"Discover models from `/v1/models`"** checkbox.
-- Endpoints are stored in `~/.modelrelay.json` under composite keys like `openai-compatible:my-vllm`:
+- hammer automatically probes `/v1/models` on each endpoint and exposes every returned model as a routable row. The manually configured model id (if any) is merged in as a fallback. Discovery is on by default and can be toggled per-endpoint with the **"Discover models from `/v1/models`"** checkbox.
+- Endpoints are stored in `~/.hammer.json` under composite keys like `openai-compatible:my-vllm`:
   ```jsonc
   {
     "apiKeys": {
@@ -318,17 +318,17 @@ modelrelay supports configuring multiple OpenAI-compatible upstream endpoints (v
 - In the Web UI, open `Settings` -> `Configuration Transfer` to export/copy/import a token.
 - The token includes your full config (including API keys, provider toggles, pinning mode, bans, filter rules, and auto-update settings).
 - Treat tokens as secrets. Anyone with the token can import your keys/settings.
-- Alternative: copy the config file directly from `~/.modelrelay.json` to the other machine at the same path (`~/.modelrelay.json`).
+- Alternative: copy the config file directly from `~/.hammer.json` to the other machine at the same path (`~/.hammer.json`).
 
 ## Troubleshooting
 
-### Clicking the update button or running `modelrelay` won't perform an update
+### Clicking the update button or running `hammer` won't perform an update
 
 To trigger a manual npm update and restart the service, run:
 
 ```bash
-npm i -g modelrelay@latest
-modelrelay autostart --start
+npm i -g hammer@latest
+hammer autostart --start
 ```
 
 ### Testing updates locally without publishing to npm
@@ -337,26 +337,26 @@ You can point the updater at a local tarball instead of the npm registry:
 
 ```bash
 npm pack
-MODELRELAY_UPDATE_TARBALL=./modelrelay-1.8.3.tgz pnpm start
+HAMMER_UPDATE_TARBALL=./hammer-1.8.3.tgz pnpm start
 ```
 
 If you want the Web UI to always show an update while testing, set a higher forced version:
 
 ```bash
-MODELRELAY_FORCE_UPDATE_VERSION=9.9.9
+HAMMER_FORCE_UPDATE_VERSION=9.9.9
 ```
 
 If the tarball filename does not contain a semantic version, also set:
 
 ```bash
-MODELRELAY_UPDATE_VERSION=1.8.3
+HAMMER_UPDATE_VERSION=1.8.3
 ```
 
-When `MODELRELAY_UPDATE_TARBALL` is set, the Web UI update flow and `modelrelay update`
+When `HAMMER_UPDATE_TARBALL` is set, the Web UI update flow and `hammer update`
 install from that tarball and bypass the normal Git checkout update block. This is for
-local testing only. `MODELRELAY_FORCE_UPDATE_VERSION` only affects version detection; the
+local testing only. `HAMMER_FORCE_UPDATE_VERSION` only affects version detection; the
 actual install still comes from the tarball path.
 
 ---
 
-⭐️ If you find modelrelay useful, please consider [starring the repo](https://github.com/ellipticmarketing/modelrelay)!
+⭐️ If you find hammer useful, please consider [starring the repo](https://github.com/Dvarkian/hammer)!

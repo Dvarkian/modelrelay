@@ -35,10 +35,10 @@ Do not bump the major version.
    When writing the release notes, summarize the changes from all commits since the last release.
 6. **Wait for npm Publish":
    ```bash
-   for i in $(seq 1 30); do sleep 10; v=$(npm view modelrelay version 2>/dev/null); echo "Attempt $i: npm version = $v"; if [ "$v" = "0.1.17" ]; then echo "✅ published!"; break; fi; done
+   for i in $(seq 1 30); do sleep 10; v=$(npm view hammer version 2>/dev/null); echo "Attempt $i: npm version = $v"; if [ "$v" = "0.1.17" ]; then echo "✅ published!"; break; fi; done
    ```
-7. **Install and Verify**: `npm install -g modelrelay@0.1.17`
-8. **Test Binary**: `modelrelay --help` (or any other command to verify it works)
+7. **Install and Verify**: `npm install -g hammer@0.1.17`
+8. **Test Binary**: `hammer --help` (or any other command to verify it works)
 9. **Only when the global npm-installed version works → the release is confirmed**
 
 **Why:** A local `npm install -g .` can mask issues because it symlinks the repo. The real npm package is a tarball built from the `files` field — only a real npm install will catch missing files.
@@ -52,15 +52,15 @@ Do not bump the major version.
 3. Wait for the new version to appear on npm:
    ```bash
    # Poll until npm has the new version
-   for i in $(seq 1 30); do sleep 10; v=$(npm view modelrelay version 2>/dev/null); echo "Attempt $i: npm version = $v"; if [ "$v" = "NEW_VERSION" ]; then echo "✅ published!"; break; fi; done
+   for i in $(seq 1 30); do sleep 10; v=$(npm view hammer version 2>/dev/null); echo "Attempt $i: npm version = $v"; if [ "$v" = "NEW_VERSION" ]; then echo "✅ published!"; break; fi; done
    ```
 4. Install the published version globally:
    ```bash
-   npm install -g modelrelay@NEW_VERSION
+   npm install -g hammer@NEW_VERSION
    ```
 5. Run the global binary and verify it works:
    ```bash
-   modelrelay
+   hammer
    ```
 6. Only if the global npm-installed version works → the fix is confirmed
 
@@ -70,7 +70,7 @@ Do not bump the major version.
 
 - Tests live in `test/test.js` using Node.js built-in `node:test` + `node:assert` (zero deps)
 - Pure logic functions are in `lib/utils.js` (extracted from the main CLI for testability)
-- The main CLI (`bin/modelrelay.js`) imports from `lib/utils.js`
+- The main CLI (`bin/hammer.js`) imports from `lib/utils.js`
 - If you add new pure logic (calculations, parsing, filtering), add it to `lib/utils.js` and write tests
 - If you modify existing logic in `lib/utils.js`, update the corresponding tests
 
@@ -104,7 +104,7 @@ These estimates MUST remain labeled (the `*` marker and the hover source/detail)
 From the project checkout, always run the source version of the command—not a globally installed package:
 
 ```powershell
-node .\bin\modelrelay.js refresh-scores
+node .\bin\hammer.js refresh-scores
 ```
 
 The command requires network access. It prints every configured or discovered model in descending score order, the source used, fallback markers, source counts, and provider-discovery warnings. A provider warning means the audit is incomplete; do not conclude that all models were checked.

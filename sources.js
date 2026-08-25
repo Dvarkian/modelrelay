@@ -268,7 +268,7 @@ export const PROVIDER_QUOTAS = {
     sourceUrl: 'https://docs.ollama.com/api/usage',
   },
   'openai-compatible': {
-    source: 'Upstream-specific limits; modelrelay reports only headers and provider errors',
+    source: 'Upstream-specific limits; hammer reports only headers and provider errors',
   },
   duckai: {
     source: 'Duck.ai anonymous daily limits are provider-managed and network-sensitive',

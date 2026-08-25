@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @file modelrelay.js
+ * @file hammer.js
  * @description Web dashboard and OpenAI-compatible router for coding LLM models.
  */
 
@@ -12,28 +12,28 @@ import { runUpdateCommand } from '../lib/update.js'
 import chalk from 'chalk'
 
 function printHelp() {
-  console.log('modelrelay')
+  console.log('hammer')
   console.log('')
   console.log('Usage:')
-  console.log('  modelrelay [--port <port>] [--log] [--ban <model1,model2>]')
-  console.log('  modelrelay onboard [--port <port>]')
-  console.log('  modelrelay install --autostart')
-  console.log('  modelrelay start --autostart')
-  console.log('  modelrelay uninstall --autostart')
-  console.log('  modelrelay status --autostart')
-  console.log('  modelrelay status')
-  console.log('  modelrelay update')
-  console.log('  modelrelay refresh-scores')
-  console.log('  modelrelay config export')
-  console.log('  modelrelay config import <token>')
-  console.log('  modelrelay config set-keys <provider> <key1,key2,...>')
-  console.log('  modelrelay config add-key <provider> <key>')
-  console.log('  modelrelay config remove-key <provider> <key>')
-  console.log('  modelrelay config remove-key <provider> <index>')
-  console.log('  modelrelay config set-maxturns <provider> <number>')
-  console.log('  modelrelay config set-maxturns <provider> 0')
-  console.log('  modelrelay autoupdate [--enable|--disable|--status] [--interval <hours>]')
-  console.log('  modelrelay autostart [--install|--start|--uninstall|--status]')
+  console.log('  hammer [--port <port>] [--log] [--ban <model1,model2>]')
+  console.log('  hammer onboard [--port <port>]')
+  console.log('  hammer install --autostart')
+  console.log('  hammer start --autostart')
+  console.log('  hammer uninstall --autostart')
+  console.log('  hammer status --autostart')
+  console.log('  hammer status')
+  console.log('  hammer update')
+  console.log('  hammer refresh-scores')
+  console.log('  hammer config export')
+  console.log('  hammer config import <token>')
+  console.log('  hammer config set-keys <provider> <key1,key2,...>')
+  console.log('  hammer config add-key <provider> <key>')
+  console.log('  hammer config remove-key <provider> <key>')
+  console.log('  hammer config remove-key <provider> <index>')
+  console.log('  hammer config set-maxturns <provider> <number>')
+  console.log('  hammer config set-maxturns <provider> 0')
+  console.log('  hammer autoupdate [--enable|--disable|--status] [--interval <hours>]')
+  console.log('  hammer autostart [--install|--start|--uninstall|--status]')
   console.log('')
   console.log('Flags:')
   console.log('  --port <number>    Router HTTP port (default: 7352)')
@@ -156,7 +156,7 @@ async function main() {
       console.log(result.message)
       if (result.path) console.log(`Path: ${result.path}`)
         if (cliArgs.autostartAction === 'install') {
-        console.log('Local access only (loopback). To expose on the LAN, set host via `--host 0.0.0.0` or MODELRELAY_HOST.')
+        console.log('Local access only (loopback). To expose on the LAN, set host via `--host 0.0.0.0` or HAMMER_HOST.')
       }
       return
     }
@@ -222,7 +222,7 @@ async function main() {
         payload = (await readStdin()).trim()
       }
       if (!payload) {
-        console.error('Missing config token. Use: modelrelay config import <token> (or pipe token via stdin).')
+        console.error('Missing config token. Use: hammer config import <token> (or pipe token via stdin).')
         process.exit(1)
       }
 
@@ -241,7 +241,7 @@ async function main() {
       const provider = cliArgs.configProvider
       const keysRaw = cliArgs.configKeys
       if (!provider || !keysRaw) {
-        console.error('Usage: modelrelay config set-keys <provider> <key1,key2,...>')
+        console.error('Usage: hammer config set-keys <provider> <key1,key2,...>')
         process.exit(1)
       }
       const keys = keysRaw.split(',').map(k => k.trim()).filter(Boolean)
@@ -266,7 +266,7 @@ async function main() {
       const provider = cliArgs.configProvider
       const key = cliArgs.configKeys
       if (!provider || !key) {
-        console.error('Usage: modelrelay config add-key <provider> <key>')
+        console.error('Usage: hammer config add-key <provider> <key>')
         process.exit(1)
       }
       const config = loadConfig()
@@ -297,7 +297,7 @@ async function main() {
       const provider = cliArgs.configProvider
       const keyOrIndex = cliArgs.configKeys
       if (!provider || keyOrIndex === undefined) {
-        console.error('Usage: modelrelay config remove-key <provider> <key|index>')
+        console.error('Usage: hammer config remove-key <provider> <key|index>')
         process.exit(1)
       }
       const config = loadConfig()
@@ -344,7 +344,7 @@ async function main() {
       const provider = cliArgs.configProvider
       const val = cliArgs.configMaxTurns
       if (!provider || val === undefined) {
-        console.error('Usage: modelrelay config set-maxturns <provider> <number>')
+        console.error('Usage: hammer config set-maxturns <provider> <number>')
         process.exit(1)
       }
       const maxTurns = Math.floor(Number(val))
@@ -367,11 +367,11 @@ async function main() {
       return
     }
 
-    console.error('Usage: modelrelay config export | modelrelay config import <token>')
-    console.error('       modelrelay config set-keys <provider> <key1,key2,...>')
-    console.error('       modelrelay config add-key <provider> <key>')
-    console.error('       modelrelay config remove-key <provider> <key|index>')
-    console.error('       modelrelay config set-maxturns <provider> <number>')
+    console.error('Usage: hammer config export | hammer config import <token>')
+    console.error('       hammer config set-keys <provider> <key1,key2,...>')
+    console.error('       hammer config add-key <provider> <key>')
+    console.error('       hammer config remove-key <provider> <key|index>')
+    console.error('       hammer config set-maxturns <provider> <number>')
     process.exit(1)
   }
 
@@ -384,14 +384,14 @@ async function main() {
     const liveStatus = getAccountStatus(config)
 
     console.log()
-    console.log(chalk.bold('modelrelay account status'))
+    console.log(chalk.bold('hammer account status'))
     console.log()
 
     const configuredProviders = Object.keys(config.apiKeys || {}).filter(k => getApiKeyPool(config, k).length > 0)
 
     if (configuredProviders.length === 0) {
       console.log(chalk.dim('No accounts configured.'))
-      console.log(chalk.dim('Add keys: modelrelay config add-key <provider> <key>'))
+      console.log(chalk.dim('Add keys: hammer config add-key <provider> <key>'))
       return
     }
 

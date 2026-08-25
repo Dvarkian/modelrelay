@@ -1,5 +1,5 @@
 {
-  "name": "modelrelay",
+  "name": "hammer",
   "version": "1.23.0",
   "description": "OpenAI-compatible local router that benchmarks free coding models across providers and forwards requests to the best available model.",
   "keywords": [
@@ -23,20 +23,20 @@
     "openai",
     "api"
   ],
-  "homepage": "https://github.com/modelrelay#readme",
+  "homepage": "https://github.com/Dvarkian/hammer#readme",
   "bugs": {
-    "url": "https://github.com/modelrelay/issues"
+    "url": "https://github.com/Dvarkian/hammer/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/modelrelay.git"
+    "url": "git+https://github.com/Dvarkian/hammer.git"
   },
   "license": "MIT",
   "author": "anonymous",
   "type": "module",
-  "main": "bin/modelrelay.js",
+  "main": "bin/hammer.js",
   "bin": {
-    "modelrelay": "./bin/modelrelay.js"
+    "hammer": "./bin/hammer.js"
   },
   "files": [
     "bin/",
@@ -49,7 +49,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "start": "node bin/modelrelay.js",
+    "start": "node bin/hammer.js",
     "test": "node --test test/test.js"
   },
   "dependencies": {

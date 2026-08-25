@@ -240,11 +240,11 @@ describe('config helpers', () => {
     assert.equal(preserved.persistRequestLogs, false)
   })
 
-  it('honors MODELRELAY_HOST and logging env overrides', () => {
+  it('honors HAMMER_HOST and logging env overrides', () => {
     withEnv({
-      MODELRELAY_HOST: '0.0.0.0',
-      MODELRELAY_LOG_CONTENT: '0',
-      MODELRELAY_PERSIST_LOGS: 'false',
+      HAMMER_HOST: '0.0.0.0',
+      HAMMER_LOG_CONTENT: '0',
+      HAMMER_PERSIST_LOGS: 'false',
     }, () => {
       const normalized = normalizeConfigShape({})
       assert.equal(normalized.host, '0.0.0.0')
@@ -328,7 +328,7 @@ describe('Duck.ai adapter', () => {
   })
 
   it('persists the solved session across client restarts', async () => {
-    const persistPath = join(tmpdir(), `modelrelay-duckai-test-${process.pid}-${Date.now()}.json`)
+    const persistPath = join(tmpdir(), `hammer-duckai-test-${process.pid}-${Date.now()}.json`)
     const challenge = toBase64('({ client_hashes: ["a"], meta: {} })')
     const fakeResponse = () => new Response('{"status":"0"}', { status: 200, headers: { 'x-vqd-hash-1': challenge } })
     let solves = 0
@@ -2947,11 +2947,11 @@ describe('update restart coordination', () => {
 
 describe('local update overrides', () => {
   it('detects local tarball updates and derives the version from the filename', () => {
-    const tarballPath = join(ROOT, 'modelrelay-9.8.7.tgz')
+    const tarballPath = join(ROOT, 'hammer-9.8.7.tgz')
     writeFileSync(tarballPath, 'placeholder', 'utf8')
 
     try {
-      withEnv({ MODELRELAY_UPDATE_TARBALL: tarballPath, MODELRELAY_UPDATE_VERSION: null }, () => {
+      withEnv({ HAMMER_UPDATE_TARBALL: tarballPath, HAMMER_UPDATE_VERSION: null }, () => {
         assert.equal(getLocalUpdateTarballPath(), tarballPath)
         assert.equal(getLocalUpdateVersion(), '9.8.7')
         assert.equal(isRunningFromSource(), false)
@@ -2962,11 +2962,11 @@ describe('local update overrides', () => {
   })
 
   it('prefers an explicit local update version override', () => {
-    const tarballPath = join(ROOT, 'modelrelay-build-under-test.tgz')
+    const tarballPath = join(ROOT, 'hammer-build-under-test.tgz')
     writeFileSync(tarballPath, 'placeholder', 'utf8')
 
     try {
-      withEnv({ MODELRELAY_UPDATE_TARBALL: tarballPath, MODELRELAY_UPDATE_VERSION: '3.2.1' }, () => {
+      withEnv({ HAMMER_UPDATE_TARBALL: tarballPath, HAMMER_UPDATE_VERSION: '3.2.1' }, () => {
         assert.equal(getLocalUpdateVersion(), '3.2.1')
       })
     } finally {
@@ -2975,13 +2975,13 @@ describe('local update overrides', () => {
   })
 
   it('accepts a forced update version for simpler local upgrade testing', () => {
-    withEnv({ MODELRELAY_FORCE_UPDATE_VERSION: '9.9.9' }, () => {
+    withEnv({ HAMMER_FORCE_UPDATE_VERSION: '9.9.9' }, () => {
       assert.equal(getForcedUpdateVersion(), '9.9.9')
     })
   })
 
   it('ignores invalid forced update versions', () => {
-    withEnv({ MODELRELAY_FORCE_UPDATE_VERSION: 'next-build' }, () => {
+    withEnv({ HAMMER_FORCE_UPDATE_VERSION: 'next-build' }, () => {
       assert.equal(getForcedUpdateVersion(), null)
     })
   })
@@ -2989,11 +2989,11 @@ describe('local update overrides', () => {
 
 describe('npm install invocation', () => {
   it('builds a shell-safe Windows npm command for local tarballs', () => {
-    const tarballPath = join(ROOT, 'modelrelay-1.8.4.tgz')
+    const tarballPath = join(ROOT, 'hammer-1.8.4.tgz')
     writeFileSync(tarballPath, 'placeholder', 'utf8')
 
     try {
-      withEnv({ MODELRELAY_UPDATE_TARBALL: tarballPath }, () => {
+      withEnv({ HAMMER_UPDATE_TARBALL: tarballPath }, () => {
         const invocation = buildNpmInstallInvocation('latest', 'win32')
         assert.equal(invocation.command, 'npm')
         assert.deepEqual(invocation.args, ['install', '-g', tarballPath])
@@ -3007,19 +3007,19 @@ describe('npm install invocation', () => {
 
 describe('post-update restart command', () => {
   it('restarts the autostart target only when autostart is configured', () => {
-    assert.equal(buildWindowsPostUpdateRestartCommand(true), 'timeout /t 2 /nobreak && modelrelay start --autostart')
-    assert.equal(buildWindowsPostUpdateRestartCommand(false), 'timeout /t 2 /nobreak && modelrelay')
+    assert.equal(buildWindowsPostUpdateRestartCommand(true), 'timeout /t 2 /nobreak && hammer start --autostart')
+    assert.equal(buildWindowsPostUpdateRestartCommand(false), 'timeout /t 2 /nobreak && hammer')
   })
 })
 
 describe('autostart', () => {
   it('resolves absolute executable path when available', () => {
-    const binPath = join(ROOT, 'bin', 'modelrelay.js')
+    const binPath = join(ROOT, 'bin', 'hammer.js')
     assert.equal(resolveAutostartExecPath(binPath), binPath)
   })
 
   it('falls back to command name when path is missing', () => {
-    assert.equal(resolveAutostartExecPath('/definitely/not/a/file/modelrelay'), 'modelrelay')
+    assert.equal(resolveAutostartExecPath('/definitely/not/a/file/hammer'), 'hammer')
   })
 
   it('resolves node executable path when available', () => {
@@ -3248,7 +3248,7 @@ describe('pinned model routing', () => {
 
 describe('package and entrypoint sanity', () => {
   const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
-  const binContent = readFileSync(join(ROOT, 'bin/modelrelay.js'), 'utf8')
+  const binContent = readFileSync(join(ROOT, 'bin/hammer.js'), 'utf8')
   const dashboardContent = readFileSync(join(ROOT, 'public/index.html'), 'utf8')
 
   it('package fields are valid', () => {
@@ -3256,8 +3256,8 @@ describe('package and entrypoint sanity', () => {
     assert.ok(pkg.version)
     assert.match(pkg.version, /^\d+\.\d+\.\d+$/)
     assert.equal(pkg.type, 'module')
-    assert.ok(pkg.bin.modelrelay)
-    assert.ok(existsSync(join(ROOT, pkg.bin.modelrelay)))
+    assert.ok(pkg.bin.hammer)
+    assert.ok(existsSync(join(ROOT, pkg.bin.hammer)))
   })
 
   it('CLI script has shebang and required imports', () => {

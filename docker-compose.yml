@@ -1,14 +1,14 @@
 services:
-  modelrelay:
+  hammer:
     build: .
-    container_name: modelrelay
+    container_name: hammer
     restart: unless-stopped
     ports:
       - "7352:7352"
     volumes:
-      - modelrelay_config:/app/config
+      - hammer_config:/app/config
     environment:
       - NODE_ENV=production
       - HOME=/app/config
 volumes:
-  modelrelay_config:
+  hammer_config:
