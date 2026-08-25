@@ -79,7 +79,7 @@ import { getConfiguredTagNames, getModelTagKey, getModelTags as getUserModelTags
 import { resolveAutostartExecPath, resolveAutostartNodePath } from '../lib/autostart.js'
 import { exportConfigToken, getApiKey, getApiKeyPool, getMaxTurns, getPinningMode, getProviderBaseUrl, getProviderModelId, getProviderPingIntervalMs, hasMultipleKeys, importConfigToken, normalizeConfigShape, isOpenAICompatibleInstanceKey, getBaseProviderKey, getOpenAICompatibleInstanceId, buildOpenAICompatibleInstanceKey, listOpenAICompatibleEndpoints, upsertOpenAICompatibleEndpoint, removeOpenAICompatibleEndpoint } from '../lib/config.js'
 import { buildNpmInstallInvocation, buildWindowsPostUpdateRestartCommand, getForcedUpdateVersion, getLocalUpdateTarballPath, getLocalUpdateVersion, isRunningFromSource, shouldStopAutostartBeforeUpdate } from '../lib/update.js'
-import { buildDuckAiMessages, buildDuckAiRequest, classifyDuckAiError, extractDuckAiModels, mergeDuckAiCookies, parseDuckAiResponse, parseDuckAiStreamChunk, DuckAiClient } from '../lib/duckai.js'
+import { buildDuckAiMessages, buildDuckAiRequest, classifyDuckAiError, extractDuckAiModels, mergeDuckAiCookies, parseDuckAiResponse, parseDuckAiStreamChunk, transformDuckAiResponse, DuckAiClient, toBase64 } from '../lib/duckai.js'
 import { buildKiroRequestPayload, buildKiroSocialLoginUrl, buildOpencodeHeaders, buildOpencodeProjectId, buildProviderRequestBody, buildProviderRequestHeaders, exchangeKiroSocialAuthFlow, exchangeKiroSocialCode, extractKiroEmailFromAccessToken, extractOllamaModelRecords, extractOpenAICompatibleModelRecords, buildOpenAICompatibleModelsListUrl, getAccountStatus, getKiroRefreshToken, hasKiroAuthConfigured, getPinnedModelCandidate, getPinnedModelMatches, isProviderAuthOptional, isProviderBearerAuthEnabled, parseKiroEventFrame, pollKiroBuilderIdToken, providerWantsBearerAuth, resolveKiroOAuthAccessToken, shouldRetryOptionalProviderWithBearer, startKiroBuilderIdDeviceAuth, startKiroSocialAuthFlow, toOllamaModelMeta, toOpenAICompatibleDiscoveredModelMeta, toOpenCodeModelMeta, toOpenRouterModelMeta, toKiloCodeModelMeta, transformKiroResponse, _setKeyPoolState } from '../lib/server.js'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, '..')
@@ -261,7 +261,7 @@ describe('Duck.ai adapter', () => {
       origin: 'https://example.test',
       fetchImpl: async (_url, requestOptions) => {
         options = requestOptions
-        return new Response('{"status":"0"}', { status: 200, headers: { 'x-vqd-hash-1': 'challenge' } })
+        return new Response('{"status":"0"}', { status: 200, headers: { 'x-vqd-hash-1': toBase64('({ client_hashes: ["a"], meta: {} })') } })
       },
     })
     assert.deepEqual((await client.discoverModels()).map(model => model.modelId), [
@@ -279,9 +279,13 @@ describe('Duck.ai adapter', () => {
   })
 
   it('builds a Duck.ai request from OpenAI messages', () => {
-    assert.deepEqual(buildDuckAiRequest({ model: 'gpt-oss-120b', messages: [{ role: 'system', content: 'Be concise' }, { role: 'user', content: 'Hi' }] }, 's1'), {
-      model: 'gpt-oss-120b', message: 'Hi', history: [{ role: 'system', content: 'Be concise' }], session_id: 's1',
-    })
+    const request = buildDuckAiRequest({ model: 'gpt-5.4-mini', messages: [{ role: 'system', content: 'Be concise' }, { role: 'user', content: 'Hi' }] }, 's1')
+    assert.equal(request.model, 'gpt-5.4-mini')
+    assert.deepEqual(request.messages, [{ role: 'user', content: 'Be concise' }, { role: 'user', content: 'Hi' }])
+    assert.equal(request.canUseTools, true)
+    assert.equal(request.reasoningEffort, 'none')
+    assert.equal(request.durableStream.publicKey.kty, 'RSA')
+    assert.ok(request.durableStream.messageId)
     assert.deepEqual(buildDuckAiMessages([{ role: 'user', content: [{ type: 'text', text: 'Hi' }] }]), [{ role: 'user', content: 'Hi' }])
   })
 
@@ -291,11 +295,21 @@ describe('Duck.ai adapter', () => {
   })
 
   it('parses Duck.ai responses and SSE chunks', () => {
-    assert.deepEqual(parseDuckAiResponse('{"message":"Hello","model":"gpt-oss-120b"}').text, 'Hello')
+    assert.equal(parseDuckAiResponse('{"message":"Hello","model":"gpt-oss-120b"}').text, 'Hello')
+    assert.equal(parseDuckAiResponse('data: {"action":"success","message":"Hello","model":"gpt-5.4-mini-2026-03-17"}\n\ndata: [DONE]\n\n').text, 'Hello')
     assert.deepEqual(parseDuckAiStreamChunk(`data: {"chunk":"Hello"}\n\ndata: {"done":true}\n\n`), [
       { text: 'Hello', model: null, sessionId: null, done: false },
       { text: '', model: null, sessionId: null, done: true },
     ])
+  })
+
+  it('translates Duck.ai responses to OpenAI chat.completions format', async () => {
+    const sse = 'data: {"action":"success","message":"Hello"}\n\ndata: [DONE]\n\n'
+    const json = await (await transformDuckAiResponse(new Response(sse, { status: 200 }), 'gpt-5.4-mini', false)).text()
+    assert.equal(JSON.parse(json).choices[0].message.content, 'Hello')
+    const stream = await (await transformDuckAiResponse(new Response(sse, { status: 200 }), 'gpt-5.4-mini', true)).text()
+    assert.ok(stream.includes('"content":"Hello"'))
+    assert.ok(stream.includes('data: [DONE]'))
   })
 
   it('merges Duck.ai cookies and classifies quota errors', () => {
