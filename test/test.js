@@ -79,7 +79,7 @@ import { getConfiguredTagNames, getModelTagKey, getModelTags as getUserModelTags
 import { resolveAutostartExecPath, resolveAutostartNodePath } from '../lib/autostart.js'
 import { exportConfigToken, getApiKey, getApiKeyPool, getMaxTurns, getPinningMode, getProviderBaseUrl, getProviderModelId, getProviderPingIntervalMs, hasMultipleKeys, importConfigToken, normalizeConfigShape, isOpenAICompatibleInstanceKey, getBaseProviderKey, getOpenAICompatibleInstanceId, buildOpenAICompatibleInstanceKey, listOpenAICompatibleEndpoints, upsertOpenAICompatibleEndpoint, removeOpenAICompatibleEndpoint } from '../lib/config.js'
 import { buildNpmInstallInvocation, buildWindowsPostUpdateRestartCommand, getForcedUpdateVersion, getLocalUpdateTarballPath, getLocalUpdateVersion, isRunningFromSource, shouldStopAutostartBeforeUpdate } from '../lib/update.js'
-import { buildDuckAiMessages, buildDuckAiRequest, classifyDuckAiError, extractDuckAiModels, mergeDuckAiCookies, parseDuckAiResponse, parseDuckAiStreamChunk } from '../lib/duckai.js'
+import { buildDuckAiMessages, buildDuckAiRequest, classifyDuckAiError, extractDuckAiModels, mergeDuckAiCookies, parseDuckAiResponse, parseDuckAiStreamChunk, DuckAiClient } from '../lib/duckai.js'
 import { buildKiroRequestPayload, buildKiroSocialLoginUrl, buildOpencodeHeaders, buildOpencodeProjectId, buildProviderRequestBody, buildProviderRequestHeaders, exchangeKiroSocialAuthFlow, exchangeKiroSocialCode, extractKiroEmailFromAccessToken, extractOllamaModelRecords, extractOpenAICompatibleModelRecords, buildOpenAICompatibleModelsListUrl, getAccountStatus, getKiroRefreshToken, hasKiroAuthConfigured, getPinnedModelCandidate, getPinnedModelMatches, isProviderAuthOptional, isProviderBearerAuthEnabled, parseKiroEventFrame, pollKiroBuilderIdToken, providerWantsBearerAuth, resolveKiroOAuthAccessToken, shouldRetryOptionalProviderWithBearer, startKiroBuilderIdDeviceAuth, startKiroSocialAuthFlow, toOllamaModelMeta, toOpenAICompatibleDiscoveredModelMeta, toOpenCodeModelMeta, toOpenRouterModelMeta, toKiloCodeModelMeta, transformKiroResponse, _setKeyPoolState } from '../lib/server.js'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, '..')
@@ -255,6 +255,22 @@ describe('config helpers', () => {
 })
 
 describe('Duck.ai adapter', () => {
+  it('registers the six current models from Duck.ai status', async () => {
+    let options
+    const client = new DuckAiClient({
+      origin: 'https://example.test',
+      fetchImpl: async (_url, requestOptions) => {
+        options = requestOptions
+        return new Response('{"status":"0"}', { status: 200, headers: { 'x-vqd-hash-1': 'challenge' } })
+      },
+    })
+    assert.deepEqual((await client.discoverModels()).map(model => model.modelId), [
+      'gpt-5.4-nano', 'gpt-5.4-mini', 'claude-haiku-4-5',
+      'mistral-small', 'tinfoil/gpt-oss-120b', 'gemma-4-31b',
+    ])
+    assert.equal(options.headers['x-vqd-accept'], '1')
+  })
+
   it('normalizes anonymous model discovery and removes duplicate ids', () => {
     assert.deepEqual(extractDuckAiModels({ models: [{ id: 'gpt-oss-120b', name: 'GPT OSS 120B' }, { id: 'gpt-oss-120b' }, 'gemma-4-31b'] }), [
       { modelId: 'gpt-oss-120b', label: 'GPT OSS 120B' },
@@ -267,6 +283,11 @@ describe('Duck.ai adapter', () => {
       model: 'gpt-oss-120b', message: 'Hi', history: [{ role: 'system', content: 'Be concise' }], session_id: 's1',
     })
     assert.deepEqual(buildDuckAiMessages([{ role: 'user', content: [{ type: 'text', text: 'Hi' }] }]), [{ role: 'user', content: 'Hi' }])
+  })
+
+  it('handles empty and structured response content at the adapter boundary', () => {
+    assert.equal(parseDuckAiResponse('').text, '')
+    assert.equal(parseDuckAiResponse('{"content":[{"text":"Hello"}]}').text, 'Hello')
   })
 
   it('parses Duck.ai responses and SSE chunks', () => {
