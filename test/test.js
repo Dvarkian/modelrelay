@@ -255,20 +255,26 @@ describe('config helpers', () => {
 })
 
 describe('Duck.ai adapter', () => {
-  it('registers the six current models from Duck.ai status', async () => {
+  it('registers the current models from Duck.ai status', async () => {
     let options
+    const requests = []
     const client = new DuckAiClient({
       origin: 'https://example.test',
       fetchImpl: async (_url, requestOptions) => {
         options = requestOptions
+        requests.push(requestOptions)
         return new Response('{"status":"0"}', { status: 200, headers: { 'x-vqd-hash-1': toBase64('({ client_hashes: ["a"], meta: {} })') } })
       },
     })
     assert.deepEqual((await client.discoverModels()).map(model => model.modelId), [
-      'gpt-5.4-nano', 'gpt-5.4-mini', 'claude-haiku-4-5',
-      'mistral-small', 'tinfoil/gpt-oss-120b', 'gemma-4-31b',
+      'gpt-5.6-luna', 'gpt-5.4-mini', 'claude-opus-4-8', 'claude-sonnet-4-6',
+      'claude-haiku-4-5', 'mistral-small-2603', 'tinfoil/gpt-oss-120b',
+      'tinfoil/gemma4-31b',
     ])
-    assert.equal(options.headers['x-vqd-accept'], '1')
+    // Bootstrap also probes the live frontend for x-fe-version/vqd-stack
+    // metadata, so assert on the status ping request specifically.
+    const statusPing = requests[0]
+    assert.equal(statusPing.headers['x-vqd-accept'], '1')
   })
 
   it('normalizes anonymous model discovery and removes duplicate ids', () => {
@@ -317,7 +323,32 @@ describe('Duck.ai adapter', () => {
     headers.append('set-cookie', 'a=1; Path=/')
     assert.equal(mergeDuckAiCookies('b=2', headers), 'b=2; a=1')
     assert.equal(classifyDuckAiError(418, 'usage limit reached'), 'rate-limit')
+    assert.equal(classifyDuckAiError(429, '{"type":"ERR_RATE_LIMIT"}'), 'rate-limit')
     assert.equal(classifyDuckAiError(403, 'forbidden'), 'session')
+  })
+
+  it('persists the solved session across client restarts', async () => {
+    const persistPath = join(tmpdir(), `modelrelay-duckai-test-${process.pid}-${Date.now()}.json`)
+    const challenge = toBase64('({ client_hashes: ["a"], meta: {} })')
+    const fakeResponse = () => new Response('{"status":"0"}', { status: 200, headers: { 'x-vqd-hash-1': challenge } })
+    let solves = 0
+    const first = new DuckAiClient({
+      origin: 'https://example.test',
+      // Count only challenge-issuing /status calls, not frontend-metadata probes.
+      fetchImpl: async (url) => { if (String(url).includes('/duckchat/v1/status')) solves += 1; return fakeResponse() },
+      persistPath,
+    })
+    await first.bootstrap()
+    assert.ok(solves >= 1)
+
+    // A fresh process pointing at the same file must reuse the saved token.
+    const second = new DuckAiClient({ origin: 'https://example.test', fetchImpl: async () => { throw new Error('should not be called'); }, persistPath })
+    await second.bootstrap()
+    assert.equal(solves, 1)
+
+    second.resetSession()
+    assert.equal(existsSync(persistPath), false)
+    rmSync(persistPath, { force: true })
   })
 })
 
