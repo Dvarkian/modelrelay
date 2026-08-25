@@ -79,6 +79,7 @@ import { getConfiguredTagNames, getModelTagKey, getModelTags as getUserModelTags
 import { resolveAutostartExecPath, resolveAutostartNodePath } from '../lib/autostart.js'
 import { exportConfigToken, getApiKey, getApiKeyPool, getMaxTurns, getPinningMode, getProviderBaseUrl, getProviderModelId, getProviderPingIntervalMs, hasMultipleKeys, importConfigToken, normalizeConfigShape, isOpenAICompatibleInstanceKey, getBaseProviderKey, getOpenAICompatibleInstanceId, buildOpenAICompatibleInstanceKey, listOpenAICompatibleEndpoints, upsertOpenAICompatibleEndpoint, removeOpenAICompatibleEndpoint } from '../lib/config.js'
 import { buildNpmInstallInvocation, buildWindowsPostUpdateRestartCommand, getForcedUpdateVersion, getLocalUpdateTarballPath, getLocalUpdateVersion, isRunningFromSource, shouldStopAutostartBeforeUpdate } from '../lib/update.js'
+import { buildDuckAiMessages, buildDuckAiRequest, classifyDuckAiError, extractDuckAiModels, mergeDuckAiCookies, parseDuckAiResponse, parseDuckAiStreamChunk } from '../lib/duckai.js'
 import { buildKiroRequestPayload, buildKiroSocialLoginUrl, buildOpencodeHeaders, buildOpencodeProjectId, buildProviderRequestBody, buildProviderRequestHeaders, exchangeKiroSocialAuthFlow, exchangeKiroSocialCode, extractKiroEmailFromAccessToken, extractOllamaModelRecords, extractOpenAICompatibleModelRecords, buildOpenAICompatibleModelsListUrl, getAccountStatus, getKiroRefreshToken, hasKiroAuthConfigured, getPinnedModelCandidate, getPinnedModelMatches, isProviderAuthOptional, isProviderBearerAuthEnabled, parseKiroEventFrame, pollKiroBuilderIdToken, providerWantsBearerAuth, resolveKiroOAuthAccessToken, shouldRetryOptionalProviderWithBearer, startKiroBuilderIdDeviceAuth, startKiroSocialAuthFlow, toOllamaModelMeta, toOpenAICompatibleDiscoveredModelMeta, toOpenCodeModelMeta, toOpenRouterModelMeta, toKiloCodeModelMeta, transformKiroResponse, _setKeyPoolState } from '../lib/server.js'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, '..')
@@ -250,6 +251,38 @@ describe('config helpers', () => {
       assert.equal(normalized.logRequestContent, false)
       assert.equal(normalized.persistRequestLogs, false)
     })
+  })
+})
+
+describe('Duck.ai adapter', () => {
+  it('normalizes anonymous model discovery and removes duplicate ids', () => {
+    assert.deepEqual(extractDuckAiModels({ models: [{ id: 'gpt-oss-120b', name: 'GPT OSS 120B' }, { id: 'gpt-oss-120b' }, 'gemma-4-31b'] }), [
+      { modelId: 'gpt-oss-120b', label: 'GPT OSS 120B' },
+      { modelId: 'gemma-4-31b', label: 'gemma-4-31b' },
+    ])
+  })
+
+  it('builds a Duck.ai request from OpenAI messages', () => {
+    assert.deepEqual(buildDuckAiRequest({ model: 'gpt-oss-120b', messages: [{ role: 'system', content: 'Be concise' }, { role: 'user', content: 'Hi' }] }, 's1'), {
+      model: 'gpt-oss-120b', message: 'Hi', history: [{ role: 'system', content: 'Be concise' }], session_id: 's1',
+    })
+    assert.deepEqual(buildDuckAiMessages([{ role: 'user', content: [{ type: 'text', text: 'Hi' }] }]), [{ role: 'user', content: 'Hi' }])
+  })
+
+  it('parses Duck.ai responses and SSE chunks', () => {
+    assert.deepEqual(parseDuckAiResponse('{"message":"Hello","model":"gpt-oss-120b"}').text, 'Hello')
+    assert.deepEqual(parseDuckAiStreamChunk(`data: {"chunk":"Hello"}\n\ndata: {"done":true}\n\n`), [
+      { text: 'Hello', model: null, sessionId: null, done: false },
+      { text: '', model: null, sessionId: null, done: true },
+    ])
+  })
+
+  it('merges Duck.ai cookies and classifies quota errors', () => {
+    const headers = new Headers()
+    headers.append('set-cookie', 'a=1; Path=/')
+    assert.equal(mergeDuckAiCookies('b=2', headers), 'b=2; a=1')
+    assert.equal(classifyDuckAiError(418, 'usage limit reached'), 'rate-limit')
+    assert.equal(classifyDuckAiError(403, 'forbidden'), 'session')
   })
 })
 
@@ -3242,6 +3275,11 @@ describe('package and entrypoint sanity', () => {
     assert.ok(dashboardContent.includes('const btn = testBtnHTML(opts)'))
     assert.ok(dashboardContent.includes('data.ok === false'))
     assert.ok(dashboardContent.includes('inflightTests'))
+    assert.ok(dashboardContent.includes('function contradictoryRetestSignature(m)'))
+    assert.ok(dashboardContent.includes('function scheduleContradictoryRetests()'))
+    assert.ok(dashboardContent.includes("m.status !== 'down' || !hasReady"))
+    assert.ok(dashboardContent.includes("m.status !== 'up' || !hasError"))
+    assert.ok(dashboardContent.includes("scheduleContradictoryRetests();"))
     assert.ok(dashboardContent.includes("fetch('/api/test-model'"))
     // Server: route exists, persists the response, records real usage stats
     assert.ok(serverContent.includes("app.post('/api/test-model'"))
@@ -3260,7 +3298,7 @@ describe('package and entrypoint sanity', () => {
     assert.ok(dashboardContent.includes("bodyError?.metadata?.headers?.['X-RateLimit-Reset']"))
     assert.ok(dashboardContent.includes('bodyRateLimited'))
     assert.ok(dashboardContent.includes('retry\\s+in\\s+(\\d+(?:\\.\\d+)?)\\s*s'))
-    assert.ok(dashboardContent.includes('const groupStatusHtml = members.length === 1 && getRateLimitResetAt(first) != null'))
+    assert.ok(dashboardContent.includes('const groupStatusHtml = members.length === 1\n        ? statusCellHTML(first)'))
     assert.ok(serverContent.includes('body.rateLimitResetAt = resetAt'))
     assert.ok(serverContent.includes('response.status === 429 || rateLimitedByText'))
     assert.equal(dashboardContent.includes('auto-fastest'), false)
@@ -3269,7 +3307,7 @@ describe('package and entrypoint sanity', () => {
   })
 
   it('keeps the group Test button for single-provider models', () => {
-    assert.ok(dashboardContent.includes("members.length === 1\n        ? (first.status === 'up' ? 'Up' : 'Down')"))
+    assert.ok(dashboardContent.includes("members.length === 1\n        ? (first.status === 'up' ? 'Up' : (first.status === 'noauth' ? 'No Auth' : 'Down'))"))
     assert.ok(dashboardContent.includes("if (hasAuth) {\n              const expired = lastR && lastR.expiresAt"))
     assert.ok(dashboardContent.includes("responseCellHTML(lastR, { rowKey: 'g:' + g.key, members: g.members, hasAuth: true, status: first.status })"))
     assert.ok(dashboardContent.includes("const hideGroupError = isGroupTest && opts.members.length > 1 && lastResponse.error"))
@@ -3294,7 +3332,7 @@ describe('package and entrypoint sanity', () => {
       assert.match(dashboardContent, new RegExp(`<th[^>]*>\\s*${header}(?:\\s|<)`), `Missing unavailable column: ${header}`)
     }
     assert.ok(dashboardContent.includes('function graveyardRowHTMLInner(g)'))
-    assert.equal(dashboardContent.includes("filtered = filtered.filter(m => m.status !== 'noauth')"), false)
+    assert.ok(dashboardContent.includes("|| m.status === 'noauth';"))
     assert.ok(dashboardContent.includes('const noAuthCount = members.filter(m => m.status === \'noauth\').length'))
     assert.ok(dashboardContent.includes("getBenchmarkTableDisplayValue(s.bestIntellMember.intell"))
     assert.ok(dashboardContent.includes("formatTtftCell(s.minTtft, 'ttft')"))
@@ -3955,6 +3993,9 @@ describe('context window bounds (known + observed)', () => {
     assert.equal(isIncompatibleModelError('This model only supports the Interactions API.', 400), true)
     assert.equal(isIncompatibleModelError('Rate limit exceeded', 429), false)
     assert.equal(isIncompatibleModelError('Payment required', 402), false)
+    // Calibration-only models can return HTTP 200 while refusing normal chat.
+    assert.equal(isIncompatibleModelError('Initiate calibration sequence. Please follow all instructions provided by the system.', 200), true)
+    assert.equal(isIncompatibleModelError('Calibration', 200), true)
     assert.equal(isIncompatibleModelError(null, 400), false)
     // OpenRouter agentic-harness-only gate: free models like inkling-small:free reject
     // every plain-API request with HTTP 403. This is a permanent provider policy (the

@@ -2219,6 +2219,9 @@
     // Row keys with a 'Test' request currently in flight (guards the Response cell
     // against being clobbered by live polling re-renders while the test runs).
     let inflightTests = new Set();
+    // Contradictory status/result pairs that have already received an automatic
+    // re-test. The signature changes when the server reports a new result/state.
+    let automaticRetestSignatures = new Map();
     let activePinnedModelId = null; // tracks the current pinned selection key
     let activePinnedProviderKey = null;
     let activePinnedRowKeys = []; // resolved pinned rows from server/client
@@ -2246,7 +2249,7 @@
       'groq': 'Groq', 'googleai': 'Google', 'cerebras': 'Cerebras',
       'nvidia': 'NVIDIA', 'openrouter': 'OpenRouter', 'codestral': 'Codestral',
       'scaleway': 'Scaleway', 'kilocode': 'KiloCode', 'opencode': 'OpenCode',
-      'ollama': 'Ollama', 'kiro': 'Kiro',
+      'ollama': 'Ollama', 'kiro': 'Kiro', 'duckai': 'Duck.ai',
     };
 
 
@@ -2319,6 +2322,7 @@
         updateChatModelOptions(allModels);
 
         render(); // triggers automatic (non-user) layout pass
+        scheduleContradictoryRetests();
         updateKPIs(allModels, data.best);
         if (openDrawerModelId) {
           const m = allModels.find(x => x.modelId === openDrawerModelId);
@@ -3679,8 +3683,8 @@
     // Providers within a model group sorted by: Ready first, paid last, then faster first.
     function compareProviders(a, b) {
       // Ready (has a successful test result) sorts first
-      const aReady = a.lastResponse && !a.lastResponse.error && a.lastResponse.text != null;
-      const bReady = b.lastResponse && !b.lastResponse.error && b.lastResponse.text != null;
+      const aReady = a.status === 'up' && a.lastResponse && a.lastResponse.ok !== false && !a.lastResponse.error && a.lastResponse.text != null;
+      const bReady = b.status === 'up' && b.lastResponse && b.lastResponse.ok !== false && !b.lastResponse.error && b.lastResponse.text != null;
       if (aReady && !bReady) return -1;
       if (!aReady && bReady) return 1;
       // Paid sorts last
@@ -3770,9 +3774,9 @@
       const hasPing = fastest !== null && fastest !== Infinity;
       const statusColor = s.upCount === 0 ? 'var(--error)' : (s.upCount === members.length ? 'var(--success)' : 'var(--warning)');
       const statusText = members.length === 1
-        ? (first.status === 'up' ? 'Up' : 'Down')
+        ? (first.status === 'up' ? 'Up' : (first.status === 'noauth' ? 'No Auth' : 'Down'))
         : (s.upCount === members.length ? 'All Up' : `${s.upCount}/${members.length} Up`);
-      const groupStatusHtml = members.length === 1 && getRateLimitResetAt(first) != null
+      const groupStatusHtml = members.length === 1
         ? statusCellHTML(first)
         : `<div style="display: flex; align-items: center; gap: 6px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: ${statusColor}"></span><span style="font-size: 0.75rem; font-weight: 500;">${statusText}</span></div>`;
       const emoji = first.status === 'banned' ? '🚫 ' : (first.status === 'excluded' ? '⛔ ' : '');
@@ -4115,7 +4119,7 @@
       const clockedModel = (opts && opts.rowKey) ? allModels.find(mm => getModelRowKey(mm) === opts.rowKey) : null;
       const clocked = clockedModel ? getRateLimitResetAt(clockedModel) != null : false;
       const errText = !clocked && !expired && lastResponse.error ? String(lastResponse.error) : '';
-      const okText = !errText && !expired && lastResponse.text != null ? String(lastResponse.text) : '';
+      const okText = !errText && !expired && lastResponse.ok !== false && lastResponse.text != null ? String(lastResponse.text) : '';
       const text = stripThoughtTags(errText || okText);
       // A successful response that outlives the provider's current health (the row
       // is no longer 'up') is stale evidence — annotate its age so a persisted
@@ -4158,6 +4162,31 @@
     function updateResponseCellIfIdle(cell, m) {
       if (inflightTests.has(getModelRowKey(m))) return;
       cell.innerHTML = `<div style="display: flex; align-items: center; gap: 6px;">${combinedStatusCellHTML(m)}</div>`;
+    }
+
+    function contradictoryRetestSignature(m) {
+      const response = m?.lastResponse;
+      if (!response) return null;
+      const hasReady = m.status === 'up' && response.ok !== false && !response.error && response.text != null;
+      const hasError = !!response.error;
+      if ((m.status !== 'down' || !hasReady) && (m.status !== 'up' || !hasError)) return null;
+      return `${m.status}|${response.at || 0}|${hasReady ? 'ready' : 'error'}|${String(response.text || response.error)}`;
+    }
+
+    function scheduleContradictoryRetests() {
+      for (const m of allModels) {
+        const signature = contradictoryRetestSignature(m);
+        const rowKey = getModelRowKey(m);
+        if (!signature) {
+          automaticRetestSignatures.delete(rowKey);
+          continue;
+        }
+        if (automaticRetestSignatures.get(rowKey) === signature || inflightTests.has(rowKey)) continue;
+        automaticRetestSignatures.set(rowKey, signature);
+        const row = document.querySelector(`[data-row-key="${CSS.escape(rowKey)}"]`);
+        const button = row?.querySelector('.test-btn:not([disabled])');
+        if (button) testModelButton(button, { rowKey, providerKey: m.providerKey, modelId: m.modelId });
+      }
     }
 
     // Handles a Test button click: asks the model to respond with the word Ready,
@@ -4476,19 +4505,20 @@
     }
     setInterval(updateRateLimitCountdowns, 1000);
 
-    // Rows whose model is paid-walled, dead, incompatible, or micro-context-bounded
-    // get every cell struck through.
+    // Rows whose model is paid-walled, dead, incompatible, micro-context-bounded,
+    // or missing authentication get every cell struck through in Unavailable.
     function isRowStruck(m) {
       return (m.lastResponse && m.lastResponse.paymentRequired === true)
         || (m.lastResponse && m.lastResponse.dead === true)
         || m.status === 'dead'
         || (m.lastResponse && m.lastResponse.incompatible === true)
         || m.status === 'incompatible'
-        || m.microContext === true;
+        || m.microContext === true
+        || m.status === 'noauth';
     }
 
     // Split display groups into the main table (usable rows only) and the
-    // graveyard (paid / dead / incompatible / micro rows). A struck row — paid
+    // graveyard (paid / dead / incompatible / micro / no-auth rows). A struck row — paid
     // above all — never appears in the main table, even inside a group that also
     // has usable providers; it is moved to the graveyard instead.
     function splitDisplayGroups(allGroups) {
@@ -4503,8 +4533,8 @@
       return { mainGroups, graveyardGroups };
     }
 
-    // Renders the graveyard table: all groups whose every provider row is paid or
-    // dead. Auto-hides the entire <details> panel when there's nothing to show.
+    // Renders the graveyard table: all groups whose provider rows are unavailable.
+    // Auto-hides the entire <details> panel when there's nothing to show.
     function renderGraveyard(groups) {
       const details = document.getElementById('graveyard-details');
       const tbody = document.getElementById('graveyard-body');
