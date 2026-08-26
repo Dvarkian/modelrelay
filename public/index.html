@@ -3757,8 +3757,10 @@
         if (u > bestUptime) bestUptime = u;
         const p = m.avg;
         if (p !== null && p !== Infinity && (fastest === Infinity || p < fastest)) fastest = p;
-        if (m.ttft != null && (minTtft === null || m.ttft < minTtft)) minTtft = m.ttft;
-        if (m.tps != null && (maxTps === null || m.tps > maxTps)) maxTps = m.tps;
+        const memberTtft = m.ttft ?? m.lastResponse?.ttftMs ?? null;
+        const memberTps = m.tps ?? m.lastResponse?.tps ?? null;
+        if (memberTtft != null && (minTtft === null || memberTtft < minTtft)) minTtft = memberTtft;
+        if (memberTps != null && (maxTps === null || memberTps > maxTps)) maxTps = memberTps;
         const ctx = m.contextTokens;
         if (ctx != null && (bestCtx === null || ctx > bestCtx)) { bestCtx = ctx; bestCtxMember = m; }
       }
@@ -4019,13 +4021,15 @@
       }
 
       // Update TTFT and tokens/sec (real usage stats)
+      const displayTtft = m.ttft ?? m.lastResponse?.ttftMs ?? null;
+      const displayTps = m.tps ?? m.lastResponse?.tps ?? null;
       const ttftCell = row.cells[3];
-      ttftCell.innerHTML = m.ttft != null
-        ? `<div style="font-size:0.82rem;">${formatSecondsFromMs(m.ttft)}</div><div style="font-size:0.7rem; color:var(--text-muted);">avg</div>`
+      ttftCell.innerHTML = displayTtft != null
+        ? `<div style="font-size:0.82rem;">${formatSecondsFromMs(displayTtft)}</div><div style="font-size:0.7rem; color:var(--text-muted);">avg</div>`
         : '<span style="font-size: 0.75rem; color: var(--text-muted);">—</span>';
       const tpsCell = row.cells[4];
-      tpsCell.innerHTML = m.tps != null
-        ? `<div style="font-size:0.82rem;">${m.tps}</div><div style="font-size:0.7rem; color:var(--text-muted);">tok/s</div>`
+      tpsCell.innerHTML = displayTps != null
+        ? `<div style="font-size:0.82rem;">${displayTps}</div><div style="font-size:0.7rem; color:var(--text-muted);">tok/s</div>`
         : '<span style="font-size: 0.75rem; color: var(--text-muted);">—</span>';
 
       // Availability column removed — uptime% now lives under ping.
@@ -4189,6 +4193,19 @@
       }
     }
 
+    function updateVisibleMetrics(model, rowKey = getModelRowKey(model)) {
+      const row = document.querySelector(`[data-row-key="${CSS.escape(rowKey)}"]`);
+      if (!row) return;
+      const ttftCell = row.cells[3];
+      const tpsCell = row.cells[4];
+      if (ttftCell) ttftCell.innerHTML = model.ttft != null
+        ? `<div style="font-size:0.82rem;">${formatSecondsFromMs(model.ttft)}</div><div style="font-size:0.7rem; color:var(--text-muted);">${rowKey.startsWith('g:') ? 'ttft' : 'avg'}</div>`
+        : '<span style="font-size: 0.75rem; color: var(--text-muted);">—</span>';
+      if (tpsCell) tpsCell.innerHTML = model.tps != null
+        ? `<div style="font-size:0.82rem;">${model.tps}</div><div style="font-size:0.7rem; color:var(--text-muted);">tok/s</div>`
+        : '<span style="font-size: 0.75rem; color: var(--text-muted);">—</span>';
+    }
+
     // Handles a Test button click: asks the model to respond with the word Ready,
     // writes the full response (or error) into the Response cell, then refreshes
     // the table so TTFT / Tok/s / Context pick up the stats recorded from it.
@@ -4223,6 +4240,17 @@
           tokens: data.tokens != null ? data.tokens : null,
           expiresAt: data.expiresAt != null ? data.expiresAt : null,
         };
+        // Paint returned metrics immediately. The follow-up model fetch persists
+        // them, but the response should never briefly show stale em dashes.
+        if (data.ok === true) {
+          const tested = allModels.find(model => model.providerKey === data.providerKey && model.modelId === data.modelId);
+          if (tested) {
+            tested.ttft = data.ttftMs != null ? data.ttftMs : tested.ttft;
+            tested.tps = data.tps != null ? data.tps : tested.tps;
+            tested.lastResponse = lastResponse;
+            updateVisibleMetrics(tested, rowKey);
+          }
+        }
         // A non-2xx response or `{ ok: false }` result did not complete a
         // successful model test. Keep the diagnostic visible instead of
         // immediately replacing it with the next polling refresh.

@@ -79,7 +79,7 @@ import { getConfiguredTagNames, getModelTagKey, getModelTags as getUserModelTags
 import { resolveAutostartExecPath, resolveAutostartNodePath } from '../lib/autostart.js'
 import { exportConfigToken, getApiKey, getApiKeyPool, getMaxTurns, getPinningMode, getProviderBaseUrl, getProviderModelId, getProviderPingIntervalMs, hasMultipleKeys, importConfigToken, normalizeConfigShape, isOpenAICompatibleInstanceKey, getBaseProviderKey, getOpenAICompatibleInstanceId, buildOpenAICompatibleInstanceKey, listOpenAICompatibleEndpoints, upsertOpenAICompatibleEndpoint, removeOpenAICompatibleEndpoint } from '../lib/config.js'
 import { buildNpmInstallInvocation, buildWindowsPostUpdateRestartCommand, getForcedUpdateVersion, getLocalUpdateTarballPath, getLocalUpdateVersion, isRunningFromSource, shouldStopAutostartBeforeUpdate } from '../lib/update.js'
-import { buildDuckAiMessages, buildDuckAiRequest, classifyDuckAiError, extractDuckAiModels, mergeDuckAiCookies, parseDuckAiResponse, parseDuckAiStreamChunk, transformDuckAiResponse, DuckAiClient, toBase64 } from '../lib/duckai.js'
+import { buildDuckAiMessages, buildDuckAiRequest, classifyDuckAiError, deriveDuckAiMetrics, extractDuckAiModels, mergeDuckAiCookies, parseDuckAiResponse, parseDuckAiStreamChunk, transformDuckAiResponse, DuckAiClient, toBase64 } from '../lib/duckai.js'
 import { buildKiroRequestPayload, buildKiroSocialLoginUrl, buildOpencodeHeaders, buildOpencodeProjectId, buildProviderRequestBody, buildProviderRequestHeaders, exchangeKiroSocialAuthFlow, exchangeKiroSocialCode, extractKiroEmailFromAccessToken, extractOllamaModelRecords, extractOpenAICompatibleModelRecords, buildOpenAICompatibleModelsListUrl, getAccountStatus, getKiroRefreshToken, hasKiroAuthConfigured, getPinnedModelCandidate, getPinnedModelMatches, isProviderAuthOptional, isProviderBearerAuthEnabled, parseKiroEventFrame, pollKiroBuilderIdToken, providerWantsBearerAuth, resolveKiroOAuthAccessToken, shouldRetryOptionalProviderWithBearer, startKiroBuilderIdDeviceAuth, startKiroSocialAuthFlow, toOllamaModelMeta, toOpenAICompatibleDiscoveredModelMeta, toOpenCodeModelMeta, toOpenRouterModelMeta, toKiloCodeModelMeta, transformKiroResponse, _setKeyPoolState } from '../lib/server.js'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, '..')
@@ -315,7 +315,56 @@ describe('Duck.ai adapter', () => {
     assert.equal(JSON.parse(json).choices[0].message.content, 'Hello')
     const stream = await (await transformDuckAiResponse(new Response(sse, { status: 200 }), 'gpt-5.4-mini', true)).text()
     assert.ok(stream.includes('"content":"Hello"'))
+    assert.ok(stream.includes('"completion_tokens":2'))
     assert.ok(stream.includes('data: [DONE]'))
+
+    const noTrailingNewline = new Response('data: {"message":"Tail"}', { status: 200 })
+    const tailResponse = await transformDuckAiResponse(noTrailingNewline, 'gpt-5.4-mini', true)
+    const tailStream = await tailResponse.text()
+    assert.ok(tailStream.includes('"content":"Tail"'))
+    assert.ok(tailStream.includes('"completion_tokens":1'))
+  })
+
+  it('retries a 429 with the existing VQD session instead of re-bootstrapping', async () => {
+    const challenge = toBase64('({ client_hashes: ["a"], meta: {} })')
+    let statusCalls = 0
+    let chatCalls = 0
+    let sleeps = 0
+    let client
+    client = new DuckAiClient({
+      origin: 'https://example.test',
+      sleepImpl: async () => { sleeps += 1; client.cooldownUntil = Date.now() },
+      fetchImpl: async (url) => {
+        if (String(url).includes('/duckchat/v1/status')) {
+          statusCalls += 1
+          return new Response('{"status":"0"}', { status: 200, headers: { 'x-vqd-hash-1': challenge } })
+        }
+        chatCalls += 1
+        return chatCalls === 1
+          ? new Response('{"type":"ERR_RATE_LIMIT"}', { status: 429, headers: { 'retry-after': '60' } })
+          : new Response('data: {"message":"Hello"}\n\ndata: [DONE]\n\n', { status: 200 })
+      },
+    })
+    client.frontendMeta = { feVersion: 'test-version', vqdStack: 'Error\\nat l (https://example.test/test.js:1:1)' }
+    const result = await client.chat({ model: 'gpt-5.4-mini', messages: [{ role: 'user', content: 'Hi' }] })
+    assert.equal(result.response.status, 200)
+    assert.equal(statusCalls, 1)
+    assert.equal(chatCalls, 2)
+    assert.equal(sleeps, 1)
+    assert.ok(result.metrics.ttftMs >= 0)
+    assert.ok(result.metrics.generationMs >= 1)
+    assert.equal(result.metrics.completionTokens, 2)
+  })
+
+  it('normalizes Duck.ai timing and token fallbacks for the test endpoint', () => {
+    const metrics = deriveDuckAiMetrics({ firstByteAt: 1250, startedAt: 1000 }, 'Ready', 250)
+    assert.equal(metrics.ttftMs, 250)
+    assert.equal(metrics.tokens, 2)
+    assert.equal(metrics.generationMs, 1)
+    assert.equal(metrics.tps, 2000)
+
+    const measured = deriveDuckAiMetrics({ ttftMs: 80, generationMs: 400, completionTokens: 10 }, '', 900)
+    assert.deepEqual(measured, { ttftMs: 80, generationMs: 400, tokens: 10, tps: 25 })
   })
 
   it('merges Duck.ai cookies and classifies quota errors', () => {
@@ -3890,6 +3939,22 @@ describe('usage stats (ttft / tokens per second)', () => {
     assert.equal(stats.ttftSum, 1000)
     assert.equal(stats.completionTokensSum, 200)
     assert.equal(stats.genMsSum, 4000)
+  })
+
+  it('keeps zero-millisecond TTFT samples visible', () => {
+    const stats = accumulateUsageSample(null, { ttft: 0, completionTokens: 2, genMs: 1 })
+    assert.equal(stats.ttftSamples, 1)
+    assert.equal(stats.ttftSum, 0)
+    assert.equal(computeUsageAverages(stats).ttft, 0)
+    assert.equal(computeUsageAverages(stats).tps, 2000)
+  })
+
+  it('normalizes legacy response-only entries before adding usage metrics', () => {
+    const stats = accumulateUsageSample({ lastResponse: { text: 'Ready' } }, { ttft: 120, completionTokens: 2, genMs: 80 })
+    assert.equal(stats.requests, 1)
+    assert.equal(stats.ttftSamples, 1)
+    assert.equal(stats.ttftSum, 120)
+    assert.equal(computeUsageAverages(stats).tps, 25)
   })
 
   it('skips samples without tokens when computing tps', () => {
