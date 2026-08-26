@@ -2197,6 +2197,17 @@ describe('sortResults', () => {
     assert.deepEqual(sorted.map(r => r.label), ['Small', 'Mid', 'Large'])
   })
 
+  it('sorts ctx values with raw token counts and em dashes', () => {
+    const results = [
+      mockResult({ label: 'Tiny', ctx: '4096' }),
+      mockResult({ label: 'NoData', ctx: '—' }),
+      mockResult({ label: 'Big', ctx: '1.5M' }),
+      mockResult({ label: 'Mid', ctx: '128k' }),
+    ]
+    const sorted = sortResults(results, 'ctx', 'asc')
+    assert.deepEqual(sorted.map(r => r.label), ['NoData', 'Tiny', 'Mid', 'Big'])
+  })
+
   it('does not mutate the original array', () => {
     const results = [
       mockResult({ label: 'B', pings: [{ ms: 500, code: '200' }] }),
