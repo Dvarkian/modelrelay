@@ -79,7 +79,8 @@ import { getConfiguredTagNames, getModelTagKey, getModelTags as getUserModelTags
 import { resolveAutostartExecPath, resolveAutostartNodePath } from '../lib/autostart.js'
 import { exportConfigToken, getApiKey, getApiKeyPool, getMaxTurns, getPinningMode, getProviderBaseUrl, getProviderModelId, getProviderPingIntervalMs, hasMultipleKeys, importConfigToken, normalizeConfigShape, isOpenAICompatibleInstanceKey, getBaseProviderKey, getOpenAICompatibleInstanceId, buildOpenAICompatibleInstanceKey, listOpenAICompatibleEndpoints, upsertOpenAICompatibleEndpoint, removeOpenAICompatibleEndpoint } from '../lib/config.js'
 import { buildNpmInstallInvocation, buildWindowsPostUpdateRestartCommand, getForcedUpdateVersion, getLocalUpdateTarballPath, getLocalUpdateVersion, isRunningFromSource, shouldStopAutostartBeforeUpdate } from '../lib/update.js'
-import { buildKiroRequestPayload, buildKiroSocialLoginUrl, buildOpencodeHeaders, buildOpencodeProjectId, buildProviderRequestBody, buildProviderRequestHeaders, exchangeKiroSocialAuthFlow, exchangeKiroSocialCode, extractKiroEmailFromAccessToken, extractOllamaModelRecords, extractOpenAICompatibleModelRecords, buildOpenAICompatibleModelsListUrl, getAccountStatus, getKiroRefreshToken, hasKiroAuthConfigured, getPinnedModelCandidate, getPinnedModelMatches, isProviderAuthOptional, isProviderBearerAuthEnabled, parseKiroEventFrame, pollKiroBuilderIdToken, providerWantsBearerAuth, resolveKiroOAuthAccessToken, shouldRetryOptionalProviderWithBearer, startKiroBuilderIdDeviceAuth, startKiroSocialAuthFlow, toOllamaModelMeta, toOpenAICompatibleDiscoveredModelMeta, toOpenCodeModelMeta, toOpenRouterModelMeta, toKiloCodeModelMeta, transformKiroResponse, _setKeyPoolState } from '../lib/server.js'
+import {  buildKiroRequestPayload,
+  buildProviderRequestBody, buildKiroSocialLoginUrl, buildOpencodeHeaders, buildOpencodeProjectId, buildProviderRequestHeaders, exchangeKiroSocialAuthFlow, exchangeKiroSocialCode, extractKiroEmailFromAccessToken, extractOllamaModelRecords, extractOpenAICompatibleModelRecords, buildOpenAICompatibleModelsListUrl, getAccountStatus, getKiroRefreshToken, hasKiroAuthConfigured, getPinnedModelCandidate, getPinnedModelMatches, isProviderAuthOptional, isProviderBearerAuthEnabled, parseKiroEventFrame, pollKiroBuilderIdToken, providerWantsBearerAuth, resolveKiroOAuthAccessToken, shouldRetryOptionalProviderWithBearer, startKiroBuilderIdDeviceAuth, startKiroSocialAuthFlow, toOllamaModelMeta, toOpenAICompatibleDiscoveredModelMeta, toOpenCodeModelMeta, toOpenRouterModelMeta, toKiloCodeModelMeta, transformKiroResponse, _setKeyPoolState } from '../lib/server.js'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, '..')
 
@@ -303,11 +304,11 @@ describe('sources data integrity', () => {
     }
   })
 
-  it('provider model tuples have 3 fields', () => {
+  it('provider model tuples have 3 or 5 fields', () => {
     for (const provider of Object.values(sources)) {
       for (const model of provider.models) {
         assert.ok(Array.isArray(model))
-        assert.equal(model.length, 3)
+        assert.ok(model.length === 3 || model.length === 5)
         assert.equal(typeof model[0], 'string')
         assert.equal(typeof model[1], 'string')
         assert.equal(typeof model[2], 'string')
@@ -1007,6 +1008,14 @@ describe('provider api key resolution', () => {
     assert.equal(headers['x-opencode-session'], 'ses_test')
     assert.equal(headers['x-opencode-request'], 'req_test')
     assert.equal(headers['x-opencode-client'], 'cli')
+  })
+
+  it('builds a Devin Connect request and handles empty credentials safely', () => {
+    const payload = buildProviderRequestBody('devin', {
+      messages: [{ role: 'user', content: 'Hello' }],
+    }, 'swe-1.6', { apiKey: '' });
+    assert.ok(Buffer.isBuffer(payload));
+    assert.ok(payload.length > 5);
   })
 
   it('adds Kiro SDK headers to provider requests', () => {

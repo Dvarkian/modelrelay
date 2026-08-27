@@ -267,6 +267,10 @@ export const PROVIDER_QUOTAS = {
     source: 'Empero fair-usage limits are provider-managed',
     sourceUrl: 'https://free.empero.org/',
   },
+  devin: {
+    source: 'Devin account and plan limits are provider-managed',
+    sourceUrl: 'https://devin.ai/pricing/',
+  },
   ollama: {
     source: 'Ollama local limits are hardware/configuration based; cloud limits are account-managed',
     sourceUrl: 'https://docs.ollama.com/api/usage',
@@ -397,6 +401,15 @@ export const sources = {
     "name": "OpenAI-Compatible",
     "url": "",
     "models": []
+  },
+  "devin": {
+    "name": "Devin SWE",
+    "url": "https://server.codeium.com/exa.api_server_pb.ApiServerService/GetChatMessage",
+    "contextUrl": "https://devin.ai/",
+    "models": [
+      ["swe-1.6", "Devin SWE 1.6", "128k", "curated", "https://devin.ai/"],
+      ["swe-1.5", "Devin SWE 1.5", "128k", "curated", "https://devin.ai/"]
+    ]
   },
   "ollama": {
     "name": "Ollama",

@@ -10,6 +10,8 @@ import { resolveAliasedModelId } from './sources.js'
 export const TAG_VOCABULARY = ['coding', 'reasoning', 'general', 'fast', 'agentic']
 
 export const MODEL_TAGS = {
+  'swe-1.6': ['coding', 'agentic'],
+  'swe-1.5': ['coding', 'agentic'],
   'glm-5.3-flash': ['coding', 'reasoning'],
   'qwen3.8-flash': ['coding', 'reasoning'],
   'arcee-ai/trinity-large-preview': ['general'],
