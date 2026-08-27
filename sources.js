@@ -270,10 +270,6 @@ export const PROVIDER_QUOTAS = {
   'openai-compatible': {
     source: 'Upstream-specific limits; hammer reports only headers and provider errors',
   },
-  duckai: {
-    source: 'Duck.ai anonymous daily limits are provider-managed and network-sensitive',
-    sourceUrl: 'https://duckduckgo.com/duckduckgo-help-pages/duckai/usage-limits',
-  },
 }
 
 export const sources = {
@@ -386,12 +382,6 @@ export const sources = {
   "openai-compatible": {
     "name": "OpenAI-Compatible",
     "url": "",
-    "models": []
-  },
-  "duckai": {
-    "name": "Duck.ai",
-    "url": "https://duck.ai/duckchat/v1/chat",
-    "contextUrl": "https://duckduckgo.com/duckduckgo-help-pages/duckai",
     "models": []
   },
   "ollama": {
