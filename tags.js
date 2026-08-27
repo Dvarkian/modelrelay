@@ -10,6 +10,8 @@ import { resolveAliasedModelId } from './sources.js'
 export const TAG_VOCABULARY = ['coding', 'reasoning', 'general', 'fast', 'agentic']
 
 export const MODEL_TAGS = {
+  'glm-5.3-flash': ['coding', 'reasoning'],
+  'qwen3.8-flash': ['coding', 'reasoning'],
   'arcee-ai/trinity-large-preview': ['general'],
   'bytedance/seed-oss-36b-instruct': ['general'],
   'claude-haiku-4.5': ['fast', 'general'],

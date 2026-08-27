@@ -1188,6 +1188,18 @@
       border-bottom: 0;
     }
 
+    .providers-group-heading {
+      margin: 1.5rem 0 0.75rem;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .providers-group-heading:first-of-type {
+      margin-top: 0;
+    }
+
     @media (max-width: 920px) {
       .providers-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1919,8 +1931,13 @@
           </button>
           <span id="refresh-all-status" style="margin-left: 10px; font-size: 0.78rem; color: var(--text-muted);"></span>
         </div>
-        <div id="providers-container" class="providers-grid">
-          <!-- Provider cards generated here -->
+        <h3 class="providers-group-heading">Active now</h3>
+        <div id="active-providers-container" class="providers-grid">
+          <!-- Active provider cards generated here -->
+        </div>
+        <h3 class="providers-group-heading">Require setup</h3>
+        <div id="setup-providers-container" class="providers-grid">
+          <!-- Providers requiring setup generated here -->
         </div>
       </div>
     </div>
@@ -2249,7 +2266,7 @@
       'groq': 'Groq', 'googleai': 'Google', 'cerebras': 'Cerebras',
       'nvidia': 'NVIDIA', 'openrouter': 'OpenRouter', 'codestral': 'Codestral',
       'scaleway': 'Scaleway', 'kilocode': 'KiloCode', 'opencode': 'OpenCode',
-      'ollama': 'Ollama', 'kiro': 'Kiro',
+      'empero': 'Empero Free', 'ollama': 'Ollama', 'kiro': 'Kiro',
     };
 
 
@@ -2648,7 +2665,7 @@
       const PROVIDER_DOMAINS = {
         'groq': 'groq.com', 'googleai': 'ai.google.dev', 'cerebras': 'cerebras.ai',
         'nvidia': 'nvidia.com', 'openrouter': 'openrouter.ai', 'codestral': 'mistral.ai',
-        'scaleway': 'scaleway.com', 'kilocode': 'kilocode.com', 'opencode': 'opencode.ai',
+        'scaleway': 'scaleway.com', 'kilocode': 'kilocode.com', 'opencode': 'opencode.ai', 'empero': 'free.empero.org',
         'ollama': 'ollama.com', 'kiro': 'kiro.dev',
       };
 
@@ -5418,9 +5435,12 @@
         renderLoggingSettings((meta && meta.logging) || {});
         renderPinningSettings(pinning);
         renderFilterRules(filterRules, providers);
-        const container = document.getElementById('providers-container');
-        if (!container) return;
-        container.innerHTML = '';
+        const activeContainer = document.getElementById('active-providers-container');
+        const setupContainer = document.getElementById('setup-providers-container');
+        if (!activeContainer || !setupContainer) return;
+        activeContainer.innerHTML = '';
+        setupContainer.innerHTML = '';
+        const endpointContainer = activeContainer;
 
         const addEndpointSection = document.createElement('div');
         addEndpointSection.className = 'provider-section autoupdate-panel';
@@ -5431,7 +5451,7 @@
           </div>
           <div style="font-size:0.78rem; color:var(--text-muted);">Configure one or more upstream OpenAI-compatible endpoints (vLLM, llama.cpp, custom relays, etc.). Each endpoint exposes a single model id.</div>
         `;
-        container.appendChild(addEndpointSection);
+        endpointContainer.appendChild(addEndpointSection);
 
         providers.sort((a, b) => {
           if (a.hasKey && !b.hasKey) return -1;
@@ -5439,6 +5459,9 @@
           return a.name.localeCompare(b.name);
         }).forEach(p => {
           const now = Date.now();
+          const providerNeedsApiKey = !['empero', 'opencode', 'ollama'].includes(p.key);
+          const providerIsActive = p.hasKey || !providerNeedsApiKey;
+
           const providerModels = allModels ? allModels.filter(m => m.providerKey === p.key) : [];
           // Count models for this provider from allModels
           const modelCount = providerModels.length;
@@ -5645,7 +5668,7 @@
               ${providerErrorHtml}
               ${rateLimitHtml}
             `;
-            container.appendChild(section);
+            (providerIsActive ? activeContainer : setupContainer).appendChild(section);
             return;
           }
           section.innerHTML = `
@@ -5699,7 +5722,7 @@
             ${providerErrorHtml}
             ${rateLimitHtml}
           `;
-          container.appendChild(section);
+          (providerIsActive ? activeContainer : setupContainer).appendChild(section);
         });
       } catch (err) { console.error(err); }
     }

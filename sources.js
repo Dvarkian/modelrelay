@@ -263,6 +263,10 @@ export const PROVIDER_QUOTAS = {
     source: 'OpenCode Zen free-model daily limits are account/model-specific; paid usage is balance-based',
     sourceUrl: 'https://opencode.ai/docs/zen/',
   },
+  empero: {
+    source: 'Empero fair-usage limits are provider-managed',
+    sourceUrl: 'https://free.empero.org/',
+  },
   ollama: {
     source: 'Ollama local limits are hardware/configuration based; cloud limits are account-managed',
     sourceUrl: 'https://docs.ollama.com/api/usage',
@@ -378,6 +382,16 @@ export const sources = {
     "name": "OpenCode Zen",
     "url": "https://opencode.ai/zen/v1/chat/completions",
     "models": []
+  },
+  "empero": {
+    "name": "Empero Free",
+    "url": "https://free.empero.org/v1/chat/completions",
+    "contextUrl": "https://free.empero.org/",
+    "discoverable": true,
+    "models": [
+      ["glm-5.3-flash", "GLM 5.3 Flash", "128k"],
+      ["qwen3.8-flash", "Qwen3.8 Flash", "128k"]
+    ]
   },
   "openai-compatible": {
     "name": "OpenAI-Compatible",

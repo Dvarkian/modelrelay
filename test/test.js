@@ -282,6 +282,14 @@ describe('sources data integrity', () => {
     assert.ok(Array.isArray(sources.kiro.models))
   })
 
+  it('includes Empero Free provider', () => {
+    assert.ok(sources.empero)
+    assert.equal(sources.empero.name, 'Empero Free')
+    assert.equal(sources.empero.url, 'https://free.empero.org/v1/chat/completions')
+    assert.equal(sources.empero.discoverable, true)
+    assert.deepEqual(sources.empero.models.map(model => model[0]), ['glm-5.3-flash', 'qwen3.8-flash'])
+  })
+
   it('does not enable discovery for Codestral because its API has no models endpoint', () => {
     assert.equal(sources.codestral.discoverable, undefined)
   })
@@ -610,6 +618,20 @@ describe('provider api key resolution', () => {
     } finally {
       if (originalBaseUrl == null) delete process.env.OLLAMA_BASE_URL
       else process.env.OLLAMA_BASE_URL = originalBaseUrl
+    }
+  })
+
+  it('supports Empero provider env var override', () => {
+    const original = process.env.EMPERO_API_KEY
+    try {
+      delete process.env.EMPERO_API_KEY
+      assert.equal(getApiKey({ apiKeys: {} }, 'empero'), null)
+      process.env.EMPERO_API_KEY = 'empero-env-key'
+      assert.equal(getApiKey({ apiKeys: {} }, 'empero'), 'empero-env-key')
+      assert.equal(getApiKey({ apiKeys: { empero: 'file-key' } }, 'empero'), 'empero-env-key')
+    } finally {
+      if (original == null) delete process.env.EMPERO_API_KEY
+      else process.env.EMPERO_API_KEY = original
     }
   })
 
